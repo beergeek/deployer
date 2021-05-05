@@ -4,22 +4,19 @@
   # functions:
   #   get: HTTPS GET method against the Ops Manager REST API
   #   put: HTTPS PUT method against the Ops Manager REST API
+  #   createProcessMember: function to create a new `processes` member
+  #   createReplicaSetMember: function to create a new replica set member
+  #   createReplicaSet: function to create a new skeleton replica set config
+  #   findAndReplaceMember: function to determine if member exists in config, create if not, replace if exists. Creates the replica set if missing
 # /
 
 try:
   import requests
-  import configparser
   from requests.auth import HTTPDigestAuth
-  import argparse
   import json
-  import time
   import copy
   import socket
-  import urllib3
-  #urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-  urllib3.disable_warnings(urllib3.exceptions.SubjectAltNameWarning)
-  from random import choice
-  from string import hexdigits
+  import sys
 except ImportError as e:
   print(e)
   exit(1)
@@ -41,7 +38,7 @@ def get(baseurl, endpoint, ca_cert_path, privateKey, publicKey, key = None):
     group_data = json.loads(resp.text)
     return group_data
   else:
-    print("GET response was %s, not `200`" % resp.status_code)
+    print("""\033[91mERROR!\033[98m GET response was %s, not `200`\033[m""" % resp.status_code)
     print(resp.text)
     raise requests.exceptions.RequestException
 
@@ -63,7 +60,7 @@ def put(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None
   if resp.status_code == 200:
     return resp
   else:
-    print("PUT response was %s, not `200`" % resp.status_code)
+    print("""\033[91mERROR!\033[98m PUT response was %s, not `200`\033[m""" % resp.status_code)
     print(resp.text)
     raise requests.exceptions.RequestException
 
@@ -182,20 +179,13 @@ def createReplicaSet(replicaSetName):
   }
   return basicReplicaSet
 
-def configAgent(fqdn, type):
-  agentConfig =  {
-    "hostname": fqdn,
-    "logPath": "/var/log/mongodb-mms-automation/" + type + "agent.log",
-    "logRotate": {
-      "sizeThresholdMB": 1000,
-      "timeThresholdHrs": 24
-    }
-  }
-
-  return agentConfig
-
 # /
+  # createReplicaSet function to create new replica sets if absent
   #
+  # Inputs:
+  #   fqdn: the FQDN of the pod, **NOT** the DNS Split Horizon name
+  #   replicaSetName: name of the replica set
+# /
 def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True):
   # deciding if I should do a proper copy
   config = copy.deepcopy(currentConfig)
@@ -259,7 +249,7 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
     # add replica set skeleton
     replicaSetPresent = len(replicaSetIds)
     rsConfig = createReplicaSet(replicaSetName)
-    config['replicaSets'][replicaSetPresent] = rsConfig
+    config['replicaSets'].append(rsConfig)
 
   # add member
   if rsMemberName == None and len(rsMemberList) > 0:
@@ -272,6 +262,7 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
   # add replica set member to replica set
   config['replicaSets'][replicaSetPresent]['members'].append(rsMemberConfig)
 
+  # Setup the backup agent, if required
   if backup == True:
     buPresent = False
     for bu in config['backupVersions']:
@@ -279,8 +270,9 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
         buPresent = True
         break
     if buPresent == False:
-      config['backupVersions'].append(configAgent(fqdn = fqdn, type = 'backup'))
+      config['backupVersions'].append({"hostname": fqdn})
 
+  # Setup monitoring agent, if required
   if monitoring == True:
     monPresent = False
     for mon in config['monitoringVersions']:
@@ -288,9 +280,6 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
         monPresent = True
         break
     if monPresent == False:
-      config['monitoringVersions'].append(configAgent(fqdn = fqdn, type = 'monitoring'))
+      config['monitoringVersions'].append({"hostname": fqdn})
 
-  
   return config
-
-
