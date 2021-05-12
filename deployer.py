@@ -57,7 +57,26 @@ def main():
     else:
       monitoring = True
 
-    processMemberConfig = omCommon.createProcessMember(fqdn = fqdn, subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'], mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': outsideName}, replicaSetName = iDeployConfig['replicaSetName'],)
+    if 'shardedClusterName' not in iDeployConfig:
+       iDeployConfig['shardedClusterName'] = None
+    if 'configServerReplicaSet' not in iDeployConfig:
+       iDeployConfig['configServerReplicaSet'] = None
+    if 'processType' not in iDeployConfig:
+      iDeployConfig['processType'] = 'mongod'
+    elif iDeployConfig['processType'] == 'mongos':
+      iDeployConfig['replicaSetName'] = 'mongos'
+    elif iDeployConfig['processType'] != 'mongod' and iDeployConfig['processType'] != 'mongos':
+      raise Exception("`processType can only be absent or `mongod` or `mongos`, default is `mongod` if absent")
+    if 'shardType' not in iDeployConfig:
+      iDeployConfig['shardType'] = None
+    elif iDeployConfig['shardType'] != 'configserver' and iDeployConfig['shardType'] != 'shardserver':
+      raise Exception("`shardType` must be absent or `configserver` or `shardserver`")
+
+    # Create the process
+    processMemberConfig = omCommon.createProcessMember(fqdn = fqdn, subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'], mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': outsideName}, replicaSetName = iDeployConfig['replicaSetName'], 
+    shardType = iDeployConfig['shardType'], shardedClusterName = iDeployConfig['shardedClusterName'], processType = iDeployConfig['processType'])
+
+    # Create the replica set member
     rsMemberConfig = omCommon.createReplicaSetMember(replicaSetName = iDeployConfig['replicaSetName'], priority = priority, arbiter = arbiter, horizons = {'OUTSIDE': outsideName})
 
     # get teh current configuration
@@ -68,7 +87,8 @@ def main():
     currentConfig.pop('version')
 
     # get the full config payload
-    requiredConfig = omCommon.findAndReplaceMember(fqdn = fqdn, replicaSetName = iDeployConfig['replicaSetName'], currentConfig = currentConfig, rsMemberConfig = rsMemberConfig, processMemberConfig = processMemberConfig, monitoring = monitoring, backup = backup)
+    requiredConfig = omCommon.findAndReplaceMember(fqdn = fqdn, replicaSetName = iDeployConfig['replicaSetName'], currentConfig = currentConfig, rsMemberConfig = rsMemberConfig, processMemberConfig = processMemberConfig, monitoring = monitoring, backup = backup, 
+      shardedClusterName = iDeployConfig['shardedClusterName'], configServer = iDeployConfig['configServerReplicaSet'], type = iDeployConfig['processType'])
     f = open((hostname + '-' + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"), 'w')
     f.write(json.dumps(requiredConfig, indent=2, sort_keys=True))
     f.close()
