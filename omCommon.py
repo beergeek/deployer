@@ -7,6 +7,7 @@
   #   createProcessMember: function to create a new `processes` member
   #   createReplicaSetMember: function to create a new replica set member
   #   createReplicaSet: function to create a new skeleton replica set config
+  #   createShardedCluster: function to create new sharded cluster if absent
   #   findAndReplaceMember: function to determine if member exists in config, create if not, replace if exists. Creates the replica set if missing
 # /
 
@@ -190,6 +191,13 @@ def createReplicaSet(replicaSetName):
   }
   return basicReplicaSet
 
+# /
+  # createShardedCluster function to create new sharded cluster if absent
+  #
+  # Inputs:
+  #   shardedClusterName: name of the of the sharded cluser
+  #   configServerReplicaSet: name of the config server replica set
+# /
 def createShardedCluster(shardedClusterName, configServerReplicaSet):
   baseShardConfig = {
     "shards": [],
@@ -337,7 +345,5 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
     config['monitoringVersions'].append({"hostname": fqdn})
   if monitoring == False and monPresent != False:
     config['monitoringVersions'].pop(monPresent)
-
-  pprint.pprint(config)
 
   return config
