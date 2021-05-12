@@ -47,7 +47,11 @@ The `config.json` file must exist in the same directory as the `deployer.py` wit
   "ca_cert_path": "/absolute/path/to/ca/cert",
   "port": 27017,
   "replicaSetName": "rs0",
+  "shardedClusterName": "myShardedCluster",
   "mongoDBVersion": "4.4.5-ent",
+  "processType": "mongos",
+  "shardType": "configserver",
+  "configServerReplicaSet": "cs0",
   "priority": {
     "mongod-0-0": 2
   },
@@ -95,11 +99,27 @@ Port number required for the MongoDB deployment.
 
 ### replicaSetName
 
-Name of the MongoDB replica set.
+Name of the MongoDB replica set/shard, required for replica sets and sharded clusters, this includes the config server replica set for sharded clusters.
+
+### shardedClusterName
+
+Name of the sharded cluster, only required for sharded clusters.
 
 ### mongoDBVersion
 
 Version of MongoDB to use in the deployment. Append `-ent` for Enterprise, e.g. `4.4.4-ent`.
+
+### shardType - REQUIRED FOR SHARDING IF CONFIG SERVER
+
+If a sharded clsuter this must be include for config servers, set to `configserver`.
+
+### processType - REQUIRED FOR SHARDING IF MONGOS
+
+Defaults to `mongod`. If a mongos is required include this attribute with `mongos` as the value.
+
+### configServerReplicaSet - REQUIRED FOR SHARDING IF MONGOD
+
+Name of the config server replica set.
 
 ### priority - OPTIONAL
 

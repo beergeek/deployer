@@ -12,9 +12,9 @@
 
 try:
   import requests
+  import pprint
   from requests.auth import HTTPDigestAuth
   import json
-  import copy
   import socket
   import sys
 except ImportError as e:
@@ -75,7 +75,13 @@ def put(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None
   #   horizons: an object of horizon names and single resolvable addresses to use for discovery outside of OpenShift, e.g {'OUTSIDE': 'mongodb-pace-pst-dca-cd-0.subdomain.whatever.com'}. OPTIONAL
   #   replicaSetName: name of the replica set
 # /
-def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, horizons = {}):
+def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, horizons = {}, shardType = None, shardedClusterName = None, processType = 'mongod'):
+  if processType == 'mongos' and shardedClusterName == None:
+    raise Exception("`shardedClusterName` is required if the processType is `mongos`")
+  if shardType == None:
+    shardType = {}
+  elif shardType == 'configserver':
+    shardType = { "clusterRole": "configsvr"}
   # Create the DNS Split Horizon name
   splitName = fqdn.split('.')[0] + '.' + subDomain
 
@@ -97,11 +103,7 @@ def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, h
       "setParameter": {
         "ocspEnabled": False
       },
-      "sharding": {},
-      "storage": {
-        "dbPath": "/data/db",
-        "engine": "wiredTiger"
-      },
+      "sharding": shardType,
       "systemLog": {
         "destination": "file",
         "path": "/var/log/mongodb-mms-automation/mongodb.log"
@@ -116,14 +118,23 @@ def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, h
       "timeThresholdHrs": 24
     },
     "manualMode": False,
-    "processType": "mongod"
+    "processType": processType
   } 
   processBaseline['alias'] = splitName
   processBaseline['args2_6']['net']['port'] = int(port)
-  processBaseline['args2_6']['replication']['replSetName'] = replicaSetName
   processBaseline['hostname'] = fqdn
   processBaseline['horizons'] = horizons
   processBaseline['version'] = mongoDBVersion
+
+  # extras for mongod
+  if processType == 'mongod':
+    processBaseline['args2_6']['replication']['replSetName'] = replicaSetName
+    processBaseline['args2_6']['storage'] = {
+      "dbPath": "/data/db",
+      "engine": "wiredTiger"
+    }
+  else:
+    processBaseline['cluster'] = shardedClusterName
 
   return processBaseline
 
@@ -179,6 +190,16 @@ def createReplicaSet(replicaSetName):
   }
   return basicReplicaSet
 
+def createShardedCluster(shardedClusterName, configServerReplicaSet):
+  baseShardConfig = {
+    "shards": [],
+    "name": shardedClusterName,
+    "configServerReplica": configServerReplicaSet,
+    "collections": []
+  }
+
+  return baseShardConfig
+
 # /
   # createReplicaSet function to create new replica sets if absent
   #
@@ -186,9 +207,9 @@ def createReplicaSet(replicaSetName):
   #   fqdn: the FQDN of the pod, **NOT** the DNS Split Horizon name
   #   replicaSetName: name of the replica set
 # /
-def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True):
-  # deciding if I should do a proper copy
-  config = copy.deepcopy(currentConfig)
+def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True, shardedClusterName = None, configServer = None, type = 'mongod'):
+
+  config = currentConfig
   currentMember = None
   rsMemberName = None
   processMemberName = None
@@ -196,6 +217,9 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
   rsMemberList = []
   replicaSetPresent = None
   replicaSetIds = []
+  shardedClusterPresent = None
+  shardPresent = None
+  shardList = []
 
   # determine if the member is already in the deployment
   if 'processes' in config and len(config['processes']) > 0:
@@ -217,69 +241,103 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
     processMemberConfig['name'] = processMemberName
   config['processes'].append(processMemberConfig)
 
-  # Determine if the member is in a replica set
-  if 'replicaSets' in config and len(config['replicaSets']) > 0:
+  if type != 'mongos':
 
-    # go through all the replica seets
-    for replicaSets in range(len(config['replicaSets'])):
+    # Determine if the member is in a replica set
+    if 'replicaSets' in config and len(config['replicaSets']) > 0:
 
-      # record the `_id` of each replica set
-      replicaSetIds.append(config['replicaSets'][replicaSets]['_id'])
+      # go through all the replica seets
+      for replicaSets in range(len(config['replicaSets'])):
 
-      # if the replica set `_id` matches the desried replica set name we record the element position
-      if config['replicaSets'][replicaSets]['_id'] == replicaSetName:
-        replicaSetPresent = replicaSets
+        # record the `_id` of each replica set
+        replicaSetIds.append(config['replicaSets'][replicaSets]['_id'])
 
-        # find if our member is in the replica set already and remove if so
-        for member in range(len(config['replicaSets'][replicaSets]['members'])):
-          rsMemberList.append(config['replicaSets'][replicaSets]['members'][member]['_id'])
+        # if the replica set `_id` matches the desried replica set name we record the element position
+        if config['replicaSets'][replicaSets]['_id'] == replicaSetName:
+          replicaSetPresent = replicaSets
 
-          # determine the current member and remove it from the array
-          if config['replicaSets'][replicaSets]['members'][member]['host'] == currentMember:
-            rsMemberName = config['replicaSets'][replicaSets]['members'][member]['_id']
-            config['replicaSets'][replicaSets]['members'].pop(member)
-    rsMemberList.sort()
-  else: 
-    # add replica set skeleton
-    rsConfig = createReplicaSet(replicaSetName)
-    config['replicaSets'].append(rsConfig)
-    replicaSetPresent = 0
-  
-  if replicaSetPresent == None:
-    # add replica set skeleton
-    replicaSetPresent = len(replicaSetIds)
-    rsConfig = createReplicaSet(replicaSetName)
-    config['replicaSets'].append(rsConfig)
+          # find if our member is in the replica set already and remove if so
+          for member in range(len(config['replicaSets'][replicaSets]['members'])):
+            rsMemberList.append(config['replicaSets'][replicaSets]['members'][member]['_id'])
 
-  # add member
-  if rsMemberName == None and len(rsMemberList) > 0:
-    rsMemberConfig['_id'] = int(rsMemberList[-1] + 1)
-  elif rsMemberName == None:
-    rsMemberConfig['_id'] = 0
-  else:
-    rsMemberConfig['_id'] = rsMemberName
-  rsMemberConfig['host'] = processMemberConfig['name']
-  # add replica set member to replica set
-  config['replicaSets'][replicaSetPresent]['members'].append(rsMemberConfig)
+            # determine the current member and remove it from the array
+            if config['replicaSets'][replicaSets]['members'][member]['host'] == currentMember:
+              rsMemberName = config['replicaSets'][replicaSets]['members'][member]['_id']
+              config['replicaSets'][replicaSets]['members'].pop(member)
+      rsMemberList.sort()
+    else: 
+      # add replica set skeleton
+      rsConfig = createReplicaSet(replicaSetName)
+      config['replicaSets'].append(rsConfig)
+      replicaSetPresent = 0
+
+    if replicaSetPresent == None:
+      # add replica set skeleton
+      replicaSetPresent = len(replicaSetIds)
+      rsConfig = createReplicaSet(replicaSetName)
+      config['replicaSets'].append(rsConfig)
+
+    # add member
+    if rsMemberName == None and len(rsMemberList) > 0:
+      rsMemberConfig['_id'] = int(rsMemberList[-1] + 1)
+    elif rsMemberName == None:
+      rsMemberConfig['_id'] = 0
+    else:
+      rsMemberConfig['_id'] = rsMemberName
+    rsMemberConfig['host'] = processMemberConfig['name']
+
+    # add replica set member to replica set
+    config['replicaSets'][replicaSetPresent]['members'].append(rsMemberConfig)
+
+    # add to sharded cluster if required
+    if shardedClusterName != None:
+
+      if 'sharding' in config and len(config['sharding']) > 0:
+        # check if our sharded cluster exists
+        for shardedCluster in config['sharding']:
+
+          if shardedCluster['name'] == shardedClusterName:
+            shardedClusterPresent = config['sharding'].index(shardedCluster)
+
+            # Check the shard is present
+            for replicaSets in shardedCluster['shards']:
+              if replicaSets['_id'] == replicaSetName:
+                shardPresent = True
+                break
+      # Create the sharded cluster if it does not exist
+      if shardedClusterPresent == None:
+        config['sharding'].append(createShardedCluster(shardedClusterName, configServer))
+        shardedClusterPresent = len(config['sharding']) - 1
+      # create the shard if not present
+      if shardPresent == None:
+        config['sharding'][shardedClusterPresent]['shards'].append({
+          "tags": [],
+          "_id": replicaSetName,
+          "rs": replicaSetName
+        })
 
   # Setup the backup agent, if required
-  if backup == True:
-    buPresent = False
-    for bu in config['backupVersions']:
-      if bu['hostname'] == fqdn:
-        buPresent = True
-        break
-    if buPresent == False:
-      config['backupVersions'].append({"hostname": fqdn})
+  buPresent = False
+  for bu in config['backupVersions']:
+    if bu['hostname'] == fqdn:
+      buPresent = config['backupVersions'].index(bu)
+      break
+  if backup == True and buPresent == False:
+    config['backupVersions'].append({"hostname": fqdn})
+  if backup == False and buPresent != False:
+    config['backupVersions'].pop(buPresent)
 
   # Setup monitoring agent, if required
-  if monitoring == True:
-    monPresent = False
-    for mon in config['monitoringVersions']:
-      if mon['hostname'] == fqdn:
-        monPresent = True
-        break
-    if monPresent == False:
-      config['monitoringVersions'].append({"hostname": fqdn})
+  monPresent = False
+  for mon in config['monitoringVersions']:
+    if mon['hostname'] == fqdn:
+      monPresent = config['monitoringVersions'].index(mon)
+      break
+  if monitoring == True and monPresent == False:
+    config['monitoringVersions'].append({"hostname": fqdn})
+  if monitoring == False and monPresent != False:
+    config['monitoringVersions'].pop(monPresent)
+
+  pprint.pprint(config)
 
   return config
