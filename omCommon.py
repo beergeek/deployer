@@ -317,24 +317,26 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
         })
 
   # Setup the backup agent, if required
-  if backup == True:
-    buPresent = False
-    for bu in config['backupVersions']:
-      if bu['hostname'] == fqdn:
-        buPresent = True
-        break
-    if buPresent == False:
-      config['backupVersions'].append({"hostname": fqdn})
+  buPresent = False
+  for bu in config['backupVersions']:
+    if bu['hostname'] == fqdn:
+      buPresent = config['backupVersions'].index(bu)
+      break
+  if backup == True and buPresent == False:
+    config['backupVersions'].append({"hostname": fqdn})
+  if backup == False and buPresent != False:
+    config['backupVersions'].pop(buPresent)
 
   # Setup monitoring agent, if required
-  if monitoring == True:
-    monPresent = False
-    for mon in config['monitoringVersions']:
-      if mon['hostname'] == fqdn:
-        monPresent = True
-        break
-    if monPresent == False:
-      config['monitoringVersions'].append({"hostname": fqdn})
+  monPresent = False
+  for mon in config['monitoringVersions']:
+    if mon['hostname'] == fqdn:
+      monPresent = config['monitoringVersions'].index(mon)
+      break
+  if monitoring == True and monPresent == False:
+    config['monitoringVersions'].append({"hostname": fqdn})
+  if monitoring == False and monPresent != False:
+    config['monitoringVersions'].pop(monPresent)
 
   pprint.pprint(config)
 
