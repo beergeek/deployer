@@ -34,6 +34,8 @@ python3 deployer.py mongod0.mongodb.local
 
 An Ops Manager API Access Key is required for the Project or the parent Organisation with at least [Project Automation Admin](https://docs.opsmanager.mongodb.com/current/reference/user-roles/#Project-Automation-Admin) role.
 
+The idea is to deploy per replica set/shard, so a different `config.json` would be for each deployment.
+
 The `config.json` file must exist in the same directory as the `deployer.py` with the following basic structure:
 
 ```json
@@ -111,7 +113,7 @@ Version of MongoDB to use in the deployment. Append `-ent` for Enterprise, e.g. 
 
 ### shardType - REQUIRED FOR SHARDING IF CONFIG SERVER
 
-If a sharded cluster this must be include for config servers, set to `configserver`.
+If a sharded cluster this must be include for config servers, set to `configserver`. Defaults to `shardserver`.
 
 ### processType - REQUIRED FOR SHARDING IF MONGOS
 
@@ -136,3 +138,121 @@ An array of short hostnames of MongoDB instances that shout NOT have the backup 
 ### nonMonitoringAgent - OPTIONAL
 
 An array of short hostnames of MongoDB instances that shout NOT have the monitoring agent enabled on the pod.
+
+## Examples of `config.json`
+
+### Replica Set Member
+
+Replica set member with the FQDN of `mongod0.mognodb.local` belonging to the `rs0` replica set with a DNS split horizon subdomain of `prod-horizon`:
+
+```json
+{
+  "omBaseURL": "https://mongod0.mongodb.local:8443/api/public/v1.0",
+  "projectID": "5f87840518322b1e72bdff8d",
+  "publicKey": "PLUMEKAW",
+  "privateKey": "0aebb38f-3ae5-4436-9267-7f98318610a3",
+  "ca_cert_path": "/data/pki/ca.pem",
+  "dnsSuffix": "mongodb.local",
+  "subDomain": "prod-horizon",
+  "port": 27017,
+  "replicaSetName": "rs0",
+  "mongoDBVersion": "4.4.4-ent"
+}
+```
+
+### Replica Set Member that is an Arbiter
+
+Replica set member with the FQDN of `mongod10.mognodb.local` belonging to the `rs0` replica set with a DNS split horizon subdomain of `prod-horizon`, who is an arbiter and does not need backup agent activated:
+
+```json
+{
+  "omBaseURL": "https://mongod0.mongodb.local:8443/api/public/v1.0",
+  "projectID": "5f87840518322b1e72bdff8d",
+  "publicKey": "PLUMEKAW",
+  "privateKey": "0aebb38f-3ae5-4436-9267-7f98318610a3",
+  "ca_cert_path": "/data/pki/ca.pem",
+  "dnsSuffix": "mongodb.local",
+  "subDomain": "prod-horizon",
+  "port": 27017,
+  "replicaSetName": "rs0",
+  "arbiter": [
+    "mongod10"
+  ],
+  "mongoDBVersion": "4.4.4-ent",
+  "nonBackupAgent": [
+    "mongod10"
+  ],
+  "processType": "mongod"
+}
+
+```
+
+
+### Shard Member
+
+Shard member with FQDN of `mongod18.mongodb.local` belonging to the `rs0` shard with a DNS split horizon subdomain of `prod-horizon`, who is a member of the `superCluster` sharded cluster and has a config server replica set called `cs0`:
+
+```json
+{
+  "omBaseURL": "https://mongod0.mongodb.local:8443/api/public/v1.0",
+  "projectID": "5f87840518322b1e72bdff8d",
+  "publicKey": "PLUMEKAW",
+  "privateKey": "0aebb38f-3ae5-4436-9267-7f98318610a3",
+  "ca_cert_path": "ABSOLUTE PATH TO CA CERTIFICATE",
+  "dnsSuffix": "mongodb.local",
+  "subDomain": "prod-horizon",
+  "port": 27018,
+  "replicaSetName": "rs0",
+  "shardedClusterName": "superCluster",
+  "configServerReplicaSet": "cs0",
+  "shardType": "shardserver",
+  "mongoDBVersion": "4.4.4-ent",
+  "processType": "mongod"
+}
+```
+
+### Config Server Member for a Sharded Cluster
+
+Replica set member with FQDN of `mongod20.mongodb.local` belonging to the `cs0` config server replcia set with a DNS split horizon subdomain of `prod-horizon`, who is a member of the `superCluster` sharded cluster:
+
+```json
+{
+  "omBaseURL": "https://mongod0.mongodb.local:8443/api/public/v1.0",
+  "projectID": "5f87840518322b1e72bdff8d",
+  "publicKey": "PLUMEKAW",
+  "privateKey": "0aebb38f-3ae5-4436-9267-7f98318610a3",
+  "ca_cert_path": "ABSOLUTE PATH TO CA CERTIFICATE",
+  "dnsSuffix": "mongodb.local",
+  "subDomain": "prod-horizon",
+  "port": 27018,
+  "replicaSetName": "cs0",
+  "shardedClusterName": "superCluster",
+  "shardType": "configserver",
+  "mongoDBVersion": "4.4.4-ent",
+  "processType": "mongod"
+}
+```
+
+### MongoS for a Sharded Cluster
+
+MongoS with FQDN of `mongod50.mongodb.local` with a DNS split horizon subdomain of `prod-horizon`, who is a member of the `superCluster` sharded cluster:
+
+```json
+{
+  "omBaseURL": "https://mongod0.mongodb.local:8443/api/public/v1.0",
+  "projectID": "5f87840518322b1e72bdff8d",
+  "publicKey": "PLUMEKAW",
+  "privateKey": "0aebb38f-3ae5-4436-9267-7f98318610a3",
+  "ca_cert_path": "ABSOLUTE PATH TO CA CERTIFICATE",
+  "dnsSuffix": "mongodb.local",
+  "subDomain": "prod-horizon",
+  "port": 27017,
+  "shardedClusterName": "superCluster",
+  "mongoDBVersion": "4.4.4-ent",
+  "processType": "mongos"
+}
+```
+
+## Limitations
+
+* Only one mongod or mongos instance per host.
