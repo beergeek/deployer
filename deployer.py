@@ -29,35 +29,33 @@ def configChecker(iConfig, args):
   if 'ca_cert_path' not in iConfig:
     raise Exception("The `ca_cert_path` must exist in the config file")
   if 'priority' in iConfig and iConfig['hostname'] in iConfig['priority']:
-    priority = iConfig['priority'][iConfig['hostname']]
+    iConfig['priority'] = iConfig['priority'][iConfig['hostname']]
   else:
-    priority = 1
+    iConfig['priority'] = 1
   if 'arbiter' in iConfig and iConfig['hostname'] in iConfig['arbiter']:
-    arbiter = True
+    iConfig['arbiter'] = True
   else:
-    arbiter = False
+    iConfig['arbiter'] = False
   if 'nonBackupAgent' in iConfig and iConfig['hostname'] in iConfig['nonBackupAgent']:
-    backup = False
+    iConfig['backup'] = False
   else:
-    backup = True
+    iConfig['backup'] = True
   if 'nonMonitoringAgent' in iConfig and iConfig['hostname'] in iConfig['nonMonitoringAgent']:
-    monitoring = False
+    iConfig['monitoring'] = False
   else:
-    monitoring = True
+    iConfig['monitoring'] = True
   if 'shardedClusterName' not in iConfig:
      iConfig['shardedClusterName'] = None
   if 'configServerReplicaSet' not in iConfig:
      iConfig['configServerReplicaSet'] = None
-  if 'processType' not in iConfig:
-    iConfig['processType'] = 'mongod'
-  elif iConfig['processType'] == 'mongos':
-    iConfig['replicaSetName'] = 'mongos'
-  elif iConfig['processType'] != 'mongod' and iConfig['processType'] != 'mongos':
-    raise Exception("`processType can only be absent or `mongod` or `mongos`, default is `mongod` if absent")
-  if 'shardType' not in iConfig:
-    iConfig['shardType'] = None
-  elif iConfig['shardType'] != 'configserver' and iConfig['shardType'] != 'shardserver':
-    raise Exception("`shardType` must be absent or `configserver` or `shardserver`")
+  if 'deploymentType' not in iConfig:
+    iConfig['deploymentType'] = 'rs'
+  elif iConfig['deploymentType'] not in ['rs','sh','cs', 'ms']:
+    raise Exception("`deploymentType` must be either 'rs' for replica set member, 'sh' for shard member, 'cs' for config server member, or 'ms' for mongos")
+  if iConfig['deploymentType'] == 'ms':
+    iConfig['replicaSetName'] = None
+  if 'replicaSetName' not in iConfig:
+    raise Exception("The replica set/shard name must be included in the `replicaSetName` parameter")
 
   return iConfig
 
@@ -75,7 +73,7 @@ def main():
 
     # Create the process
     processMemberConfig = omCommon.createProcessMember(fqdn = iDeployConfig['fqdn'], subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'], mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': iDeployConfig['outsideName']}, replicaSetName = iDeployConfig['replicaSetName'], 
-    shardType = iDeployConfig['shardType'], shardedClusterName = iDeployConfig['shardedClusterName'], processType = iDeployConfig['processType'])
+    shardedClusterName = iDeployConfig['shardedClusterName'], deploymentType = iDeployConfig['deploymentType'])
 
     # Create the replica set member
     rsMemberConfig = omCommon.createReplicaSetMember(replicaSetName = iDeployConfig['replicaSetName'], priority = iDeployConfig['priority'], arbiter = iDeployConfig['arbiter'], horizons = {'OUTSIDE': iDeployConfig['outsideName']})
@@ -88,8 +86,8 @@ def main():
     currentConfig.pop('version')
 
     # get the full config payload
-    requiredConfig = omCommon.findAndReplaceMember(fqdn = iDeployConfig['fqdn'], replicaSetName = iDeployConfig['replicaSetName'], currentConfig = currentConfig, rsMemberConfig = rsMemberConfig, processMemberConfig = processMemberConfig, monitoring = monitoring, backup = backup, 
-      shardedClusterName = iDeployConfig['shardedClusterName'], configServer = iDeployConfig['configServerReplicaSet'], type = iDeployConfig['processType'])
+    requiredConfig = omCommon.findAndReplaceMember(fqdn = iDeployConfig['fqdn'], replicaSetName = iDeployConfig['replicaSetName'], currentConfig = currentConfig, rsMemberConfig = rsMemberConfig, processMemberConfig = processMemberConfig, monitoring = iDeployConfig['monitoring'], backup = iDeployConfig['backup'], 
+      shardedClusterName = iDeployConfig['shardedClusterName'], configServer = iDeployConfig['configServerReplicaSet'], deploymentType = iDeployConfig['deploymentType'])
     f = open((iDeployConfig['hostname'] + '-' + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"), 'w')
     f.write(json.dumps(requiredConfig, indent=2, sort_keys=True))
     f.close()

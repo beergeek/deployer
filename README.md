@@ -36,6 +36,8 @@ An Ops Manager API Access Key is required for the Project or the parent Organisa
 
 The idea is to deploy per replica set/shard, so a different `config.json` would be for each deployment.
 
+If deploying sharding the config servers **must** be deployed before the shards.
+
 The `config.json` file must exist in the same directory as the `deployer.py` with the following basic structure:
 
 ```json
@@ -51,8 +53,7 @@ The `config.json` file must exist in the same directory as the `deployer.py` wit
   "replicaSetName": "rs0",
   "shardedClusterName": "myShardedCluster",
   "mongoDBVersion": "4.4.5-ent",
-  "processType": "mongos",
-  "shardType": "configserver",
+  "deploymentType": "rs",
   "configServerReplicaSet": "cs0",
   "priority": {
     "mongod-0-0": 2
@@ -107,17 +108,13 @@ Name of the MongoDB replica set/shard, required for replica sets and sharded clu
 
 Name of the sharded cluster, only required for sharded clusters.
 
+### deploymentType
+
+Type of deployment, must be either 'rs' for replica set member, 'sh' for shard member, 'cs' for config server member, or 'ms' for mongos". Defaults to `rs`.
+
 ### mongoDBVersion
 
 Version of MongoDB to use in the deployment. Append `-ent` for Enterprise, e.g. `4.4.4-ent`.
-
-### shardType - REQUIRED FOR SHARDING IF CONFIG SERVER
-
-If a sharded cluster this must be include for config servers, set to `configserver`. Defaults to `shardserver`.
-
-### processType - REQUIRED FOR SHARDING IF MONGOS
-
-Defaults to `mongod`. If a mongos is required include this attribute with `mongos` as the value.
 
 ### configServerReplicaSet - REQUIRED FOR SHARDING IF MONGOD
 
@@ -156,6 +153,7 @@ Replica set member with the FQDN of `mongod0.mognodb.local` belonging to the `rs
   "subDomain": "prod-horizon",
   "port": 27017,
   "replicaSetName": "rs0",
+  "deploymentType": "rs",
   "mongoDBVersion": "4.4.4-ent"
 }
 ```
@@ -182,7 +180,7 @@ Replica set member with the FQDN of `mongod10.mognodb.local` belonging to the `r
   "nonBackupAgent": [
     "mongod10"
   ],
-  "processType": "mongod"
+  "deploymentType": "rs"
 }
 
 ```
@@ -205,9 +203,8 @@ Shard member with FQDN of `mongod18.mongodb.local` belonging to the `rs0` shard 
   "replicaSetName": "rs0",
   "shardedClusterName": "superCluster",
   "configServerReplicaSet": "cs0",
-  "shardType": "shardserver",
   "mongoDBVersion": "4.4.4-ent",
-  "processType": "mongod"
+  "deploymentType": "sh"
 }
 ```
 
@@ -227,9 +224,8 @@ Replica set member with FQDN of `mongod20.mongodb.local` belonging to the `cs0` 
   "port": 27018,
   "replicaSetName": "cs0",
   "shardedClusterName": "superCluster",
-  "shardType": "configserver",
   "mongoDBVersion": "4.4.4-ent",
-  "processType": "mongod"
+  "deploymentType": "cs",
 }
 ```
 
@@ -249,7 +245,7 @@ MongoS with FQDN of `mongod50.mongodb.local` with a DNS split horizon subdomain 
   "port": 27017,
   "shardedClusterName": "superCluster",
   "mongoDBVersion": "4.4.4-ent",
-  "processType": "mongos"
+  "deploymentType": "ms"
 }
 ```
 

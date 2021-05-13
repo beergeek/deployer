@@ -12,12 +12,14 @@
 # /
 
 try:
-  import requests
   import pprint
-  from requests.auth import HTTPDigestAuth
+  import requests
   import json
   import socket
   import sys
+  from requests.auth import HTTPDigestAuth
+  from random import randint
+  from time import sleep
 except ImportError as e:
   print(e)
   exit(1)
@@ -57,13 +59,20 @@ def get(baseurl, endpoint, ca_cert_path, privateKey, publicKey, key = None):
 # /
 def put(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None):
   header = {'Content-Type': 'application/json'}
-  resp = requests.put(baseurl.rstrip('/') + endpoint, auth=HTTPDigestAuth(publicKey, privateKey), verify = ca_cert_path, cert = key, timeout = 10, data = json.dumps(data), headers = header)
-  if resp.status_code == 200:
-    return resp
-  else:
-    print("""\033[91mERROR!\033[98m PUT response was %s, not `200`\033[m""" % resp.status_code)
-    print(resp.text)
-    raise requests.exceptions.RequestException
+  # Attempt three times if we have contention
+  for i in range(0,2):
+    while True:
+      resp = requests.put(baseurl.rstrip('/') + endpoint, auth=HTTPDigestAuth(publicKey, privateKey), verify = ca_cert_path, cert = key, timeout = 10, data = json.dumps(data), headers = header)
+      if resp.status_code == 200:
+        return resp
+      elif resp.status_code == 409:
+        print("Contention issues: %s" % resp.text)
+        sleep(randint(1,5))
+        continue
+      else:
+        print("""\033[91mERROR!\033[98m PUT response was %s, not `200`\033[m""" % resp.status_code)
+        print(resp.text)
+        raise requests.exceptions.RequestException
 
 # /
   # createProcessMember funtion to create a new process member
@@ -75,14 +84,25 @@ def put(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None
   #   mongoDBVersion: The mongoDB Version, e.g. `4.4.5-ent`
   #   horizons: an object of horizon names and single resolvable addresses to use for discovery outside of OpenShift, e.g {'OUTSIDE': 'mongodb-pace-pst-dca-cd-0.subdomain.whatever.com'}. OPTIONAL
   #   replicaSetName: name of the replica set
+  #   deploymentType: type of member `rs`, `sh`, `cs`, `ms`.
+  #   shardedClusterName: Name of the Shard Cluster, required if a member of a sharded cluster
+  #   
 # /
-def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, horizons = {}, shardType = None, shardedClusterName = None, processType = 'mongod'):
-  if processType == 'mongos' and shardedClusterName == None:
-    raise Exception("`shardedClusterName` is required if the processType is `mongos`")
-  if shardType == None:
+def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, horizons = {}, shardedClusterName = None, deploymentType = 'rs'):
+  if deploymentType == 'ms' and shardedClusterName == None:
+    raise Exception("`shardedClusterName` is required if the deploymentType is `ms`")
+  if deploymentType == 'ms':
     shardType = {}
-  elif shardType == 'configserver':
+    processType = 'mongos'
+  elif deploymentType == 'rs':
+    shardType = {}
+    processType = 'mongod'
+  elif deploymentType == 'cs':
     shardType = { "clusterRole": "configsvr"}
+    processType = 'mongod'
+  elif deploymentType == 'sh':
+    shardType = { "clusterRole": "shardsvr"}
+    processType = 'mongod'
   # Create the DNS Split Horizon name
   splitName = fqdn.split('.')[0] + '.' + subDomain
 
@@ -128,7 +148,7 @@ def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, h
   processBaseline['version'] = mongoDBVersion
 
   # extras for mongod
-  if processType == 'mongod':
+  if deploymentType in ['rs', 'sh', 'cs']:
     processBaseline['args2_6']['replication']['replSetName'] = replicaSetName
     processBaseline['args2_6']['storage'] = {
       "dbPath": "/data/db",
@@ -176,16 +196,11 @@ def createReplicaSet(replicaSetName):
     "members": [],
     "protocolVersion": "1",
     "settings": {
-      "catchUpTakeoverDelayMillis": 30000,
-      "catchUpTimeoutMillis": -1,
       "chainingAllowed": True,
-      "electionTimeoutMillis": 10000,
-      "getLastErrorDefaults": {
-        "w": "majority",
-        "wtimeout": 0
-      },
-      "getLastErrorModes": {},
-      "heartbeatTimeoutSecs": 10
+      "heartbeatTimeoutSecs": 10,
+      "catchUpTimeoutMillis": -1,
+      "catchUpTakeoverDelayMillis": 30000,
+      "electionTimeoutMillis": 10000
     },
     "writeConcernMajorityJournalDefault": "true"
   }
@@ -215,7 +230,11 @@ def createShardedCluster(shardedClusterName, configServerReplicaSet):
   #   fqdn: the FQDN of the pod, **NOT** the DNS Split Horizon name
   #   replicaSetName: name of the replica set
 # /
-def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True, shardedClusterName = None, configServer = None, type = 'mongod'):
+def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True, shardedClusterName = None, configServer = None, deploymentType = 'rs'):
+  if deploymentType not in ['rs','sh','cs', 'ms']:
+    raise Exception("`deploymentType` must be either 'rs' for replica set member, 'sh' for shard member, 'cs' for config server member, or 'ms' for mongos")
+  if deploymentType == 'ms':
+    replicaSetName = 'mongos'
 
   config = currentConfig
   currentMember = None
@@ -249,7 +268,7 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
     processMemberConfig['name'] = processMemberName
   config['processes'].append(processMemberConfig)
 
-  if type != 'mongos':
+  if deploymentType != 'ms':
 
     # Determine if the member is in a replica set
     if 'replicaSets' in config and len(config['replicaSets']) > 0:
@@ -297,8 +316,8 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
     # add replica set member to replica set
     config['replicaSets'][replicaSetPresent]['members'].append(rsMemberConfig)
 
-    # add to sharded cluster if required
-    if shardedClusterName != None:
+    # add to sharded cluster if required (e.g. if not a replica set or not a config server)
+    if shardedClusterName != None and deploymentType == 'sh':
 
       if 'sharding' in config and len(config['sharding']) > 0:
         # check if our sharded cluster exists
@@ -325,25 +344,27 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
         })
 
   # Setup the backup agent, if required
-  buPresent = False
+  buPresent = None
   for bu in config['backupVersions']:
     if bu['hostname'] == fqdn:
       buPresent = config['backupVersions'].index(bu)
       break
-  if backup == True and buPresent == False:
+  if backup == True and buPresent == None:
     config['backupVersions'].append({"hostname": fqdn})
-  if backup == False and buPresent != False:
+  if backup == False and buPresent != None:
     config['backupVersions'].pop(buPresent)
 
   # Setup monitoring agent, if required
-  monPresent = False
+  monPresent = None
   for mon in config['monitoringVersions']:
     if mon['hostname'] == fqdn:
       monPresent = config['monitoringVersions'].index(mon)
       break
-  if monitoring == True and monPresent == False:
+  if monitoring == True and monPresent == None:
     config['monitoringVersions'].append({"hostname": fqdn})
-  if monitoring == False and monPresent != False:
+  if monitoring == False and monPresent != None:
     config['monitoringVersions'].pop(monPresent)
+
+  pprint.pprint(config)
 
   return config
