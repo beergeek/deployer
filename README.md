@@ -111,7 +111,7 @@ Version of MongoDB to use in the deployment. Append `-ent` for Enterprise, e.g. 
 
 ### shardType - REQUIRED FOR SHARDING IF CONFIG SERVER
 
-If a sharded clsuter this must be include for config servers, set to `configserver`.
+If a sharded cluster this must be include for config servers, set to `configserver`.
 
 ### processType - REQUIRED FOR SHARDING IF MONGOS
 

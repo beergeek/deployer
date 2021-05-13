@@ -10,8 +10,59 @@ except ImportError as e:
   print(e)
   exit(1)
 
+# Check the configuration for validity
+def configChecker(iConfig, args):
+  # check if FQDN provided, if not use hostname from os
+  if len(args) > 1:
+    allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
+    iConfig['fqdn'] = sys.argv[1]
+    if iConfig['fqdn'][-1] == ".":
+      iConfig['fqdn'] = fqdn[:-1] # strip exactly one dot from the right, if present
+    if all(allowed.match(x) for x in iConfig['fqdn'].split(".")) == False:
+      print("%s is not a valid FQDN" % iConfig['fqdn'])
+      raise Exception("%s is not a valid FQDN" % iConfig['fqdn'])
+  else:
+    iConfig['fqdn'] = socket.gethostname()
+  iConfig['hostname'] = iConfig['fqdn'].split('.')[0]
+  iConfig['splitName'] = iConfig['hostname'] + '.' + iConfig['subDomain']
+  iConfig['outsideName'] = iConfig['splitName'] + '.' + iConfig['dnsSuffix'] + ':' + str(iConfig['port'])
+  if 'ca_cert_path' not in iConfig:
+    raise Exception("The `ca_cert_path` must exist in the config file")
+  if 'priority' in iConfig and iConfig['hostname'] in iConfig['priority']:
+    priority = iConfig['priority'][iConfig['hostname']]
+  else:
+    priority = 1
+  if 'arbiter' in iConfig and iConfig['hostname'] in iConfig['arbiter']:
+    arbiter = True
+  else:
+    arbiter = False
+  if 'nonBackupAgent' in iConfig and iConfig['hostname'] in iConfig['nonBackupAgent']:
+    backup = False
+  else:
+    backup = True
+  if 'nonMonitoringAgent' in iConfig and iConfig['hostname'] in iConfig['nonMonitoringAgent']:
+    monitoring = False
+  else:
+    monitoring = True
+  if 'shardedClusterName' not in iConfig:
+     iConfig['shardedClusterName'] = None
+  if 'configServerReplicaSet' not in iConfig:
+     iConfig['configServerReplicaSet'] = None
+  if 'processType' not in iConfig:
+    iConfig['processType'] = 'mongod'
+  elif iConfig['processType'] == 'mongos':
+    iConfig['replicaSetName'] = 'mongos'
+  elif iConfig['processType'] != 'mongod' and iConfig['processType'] != 'mongos':
+    raise Exception("`processType can only be absent or `mongod` or `mongos`, default is `mongod` if absent")
+  if 'shardType' not in iConfig:
+    iConfig['shardType'] = None
+  elif iConfig['shardType'] != 'configserver' and iConfig['shardType'] != 'shardserver':
+    raise Exception("`shardType` must be absent or `configserver` or `shardserver`")
+
+  return iConfig
+
 def main():
-  try:
+  #try:
     if os.path.isfile(sys.path[0] + '/config.json') == False:
       print("\033[91mERROR! The `config.json` file must be in the ame directory as `deployer.py`\033[m")
       raise Exception("\033[91mERROR! The `config.json` file must be in the ame directory as `deployer.py`\033[m")
@@ -19,65 +70,15 @@ def main():
     with open(sys.path[0] + '/config.json', 'r') as f:
       iDeployConfig = json.load(f)
 
-    # check if FQDN provided, if not use hostname from os
-    if len(sys.argv) > 1:
-      allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
-      fqdn = sys.argv[1]
-      if fqdn[-1] == ".":
-        fqdn = fqdn[:-1] # strip exactly one dot from the right, if present
-      if all(allowed.match(x) for x in fqdn.split(".")) == False:
-        print("%s is not a valid FQDN" % fqdn)
-        raise Exception("%s is not a valid FQDN" % fqdn)
-    else:
-      fqdn = socket.gethostname()
-    hostname = fqdn.split('.')[0]
-    splitName = hostname + '.' + iDeployConfig['subDomain']
-    outsideName = splitName + '.' + iDeployConfig['dnsSuffix'] + ':' + str(iDeployConfig['port'])
-
-    if 'ca_cert_path' not in iDeployConfig:
-      raise Exception("The `ca_cert_path` must exist in the config file")
-
-    if 'priority' in iDeployConfig and hostname in iDeployConfig['priority']:
-      priority = iDeployConfig['priority'][hostname]
-    else:
-      priority = 1
-
-    if 'arbiter' in iDeployConfig and hostname in iDeployConfig['arbiter']:
-      arbiter = True
-    else:
-      arbiter = False
-
-    if 'nonBackupAgent' in iDeployConfig and hostname in iDeployConfig['nonBackupAgent']:
-      backup = False
-    else:
-      backup = True
-
-    if 'nonMonitoringAgent' in iDeployConfig and hostname in iDeployConfig['nonMonitoringAgent']:
-      monitoring = False
-    else:
-      monitoring = True
-
-    if 'shardedClusterName' not in iDeployConfig:
-       iDeployConfig['shardedClusterName'] = None
-    if 'configServerReplicaSet' not in iDeployConfig:
-       iDeployConfig['configServerReplicaSet'] = None
-    if 'processType' not in iDeployConfig:
-      iDeployConfig['processType'] = 'mongod'
-    elif iDeployConfig['processType'] == 'mongos':
-      iDeployConfig['replicaSetName'] = 'mongos'
-    elif iDeployConfig['processType'] != 'mongod' and iDeployConfig['processType'] != 'mongos':
-      raise Exception("`processType can only be absent or `mongod` or `mongos`, default is `mongod` if absent")
-    if 'shardType' not in iDeployConfig:
-      iDeployConfig['shardType'] = None
-    elif iDeployConfig['shardType'] != 'configserver' and iDeployConfig['shardType'] != 'shardserver':
-      raise Exception("`shardType` must be absent or `configserver` or `shardserver`")
+    # check input
+    iDeployConfig = configChecker(iConfig = iDeployConfig, args = sys.argv)
 
     # Create the process
-    processMemberConfig = omCommon.createProcessMember(fqdn = fqdn, subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'], mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': outsideName}, replicaSetName = iDeployConfig['replicaSetName'], 
+    processMemberConfig = omCommon.createProcessMember(fqdn = iDeployConfig['fqdn'], subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'], mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': iDeployConfig['outsideName']}, replicaSetName = iDeployConfig['replicaSetName'], 
     shardType = iDeployConfig['shardType'], shardedClusterName = iDeployConfig['shardedClusterName'], processType = iDeployConfig['processType'])
 
     # Create the replica set member
-    rsMemberConfig = omCommon.createReplicaSetMember(replicaSetName = iDeployConfig['replicaSetName'], priority = priority, arbiter = arbiter, horizons = {'OUTSIDE': outsideName})
+    rsMemberConfig = omCommon.createReplicaSetMember(replicaSetName = iDeployConfig['replicaSetName'], priority = iDeployConfig['priority'], arbiter = iDeployConfig['arbiter'], horizons = {'OUTSIDE': iDeployConfig['outsideName']})
 
     # get teh current configuration
     currentConfig = omCommon.get(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
@@ -87,16 +88,16 @@ def main():
     currentConfig.pop('version')
 
     # get the full config payload
-    requiredConfig = omCommon.findAndReplaceMember(fqdn = fqdn, replicaSetName = iDeployConfig['replicaSetName'], currentConfig = currentConfig, rsMemberConfig = rsMemberConfig, processMemberConfig = processMemberConfig, monitoring = monitoring, backup = backup, 
+    requiredConfig = omCommon.findAndReplaceMember(fqdn = iDeployConfig['fqdn'], replicaSetName = iDeployConfig['replicaSetName'], currentConfig = currentConfig, rsMemberConfig = rsMemberConfig, processMemberConfig = processMemberConfig, monitoring = monitoring, backup = backup, 
       shardedClusterName = iDeployConfig['shardedClusterName'], configServer = iDeployConfig['configServerReplicaSet'], type = iDeployConfig['processType'])
-    f = open((hostname + '-' + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"), 'w')
+    f = open((iDeployConfig['hostname'] + '-' + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"), 'w')
     f.write(json.dumps(requiredConfig, indent=2, sort_keys=True))
     f.close()
 
     # Send config
     reply = omCommon.put(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', data = requiredConfig, publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
     print("Reply from Ops Manager: %s" % reply)
-  except Exception as e:
-    print(e)
+  #except Exception as e:
+  #  print(e)
 
 if __name__ == "__main__": main()
