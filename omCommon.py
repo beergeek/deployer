@@ -4,6 +4,7 @@
   # functions:
   #   get: HTTPS GET method against the Ops Manager REST API
   #   put: HTTPS PUT method against the Ops Manager REST API
+  #   add_missing_aa: create the automation agent version section if missing
   #   createProcessMember: function to create a new `processes` member
   #   createReplicaSetMember: function to create a new replica set member
   #   createReplicaSet: function to create a new skeleton replica set config
@@ -12,7 +13,7 @@
 # /
 
 try:
-  import pprint
+  import glob
   import requests
   import json
   import socket
@@ -73,6 +74,33 @@ def put(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None
         print("""\033[91mERROR!\033[98m PUT response was %s, not `200`\033[m""" % resp.status_code)
         print(resp.text)
         raise requests.exceptions.RequestException
+
+# /
+  # add_missing_aa funtion to create the automation agent version section if missing from config.
+  #   will look at on disk version of the automation agent to see current installed version and use in config.
+  #   Will fail if missing on disk.
+  #
+  # Inputs:
+  #   currentConfig: current configuration for the project
+  #   opsManagerAddress: address of Ops Manager, including protocol and port
+  #   aaVersion: if you want to force the automation agent version. Optional
+  #   
+# /
+def add_missing_aa(currentConfig, opsManagerAddress, aaVersion = None):
+  if 'agentVersion' not in currentConfig:
+    if aaVersion == None:
+      for f in glob.glob('/opt/mongodb-mms-automation/versions/mongodb-mms-automation-agent-*'):
+        aaVersion = f.split('-')[-1] + "-1"
+    # if we do not have an aaVersion here that means it is not installed, so error out
+    if aaVersion == None:
+      raise("The automation agent does not appear to be installed, please install before continuing")
+
+    currentConfig['agentVersion'] = {
+      "directoryUrl": opsManagerAddress.rstrip('/') + "/download/agent/automation/",
+      "name": aaVersion
+    }
+
+  return currentConfig
 
 # /
   # createProcessMember funtion to create a new process member
@@ -364,7 +392,5 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
     config['monitoringVersions'].append({"hostname": fqdn})
   if monitoring == False and monPresent != None:
     config['monitoringVersions'].pop(monPresent)
-
-  pprint.pprint(config)
 
   return config
