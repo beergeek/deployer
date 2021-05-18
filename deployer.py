@@ -81,6 +81,9 @@ def main():
     # get teh current configuration
     currentConfig = omCommon.get(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
 
+    # add the automation agent section if missing
+    currentConfig = omCommon.add_missing_aa(currentConfig = currentConfig, opsManagerAddress = iDeployConfig['omBaseURL'])
+
     # remove keys that are not required
     currentConfig.pop('mongoDbVersions')
     currentConfig.pop('version')
