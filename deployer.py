@@ -72,6 +72,11 @@ def main():
     # check input
     iDeployConfig = configChecker(iConfig = iDeployConfig, args = sys.argv)
 
+    # get current alerts
+    # code for alerts
+    currentAlerts = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+    print(currentAlerts)
+
     # Create the process
     processMemberConfig = omCommon.createProcessMember(fqdn = iDeployConfig['fqdn'], subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'], mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': iDeployConfig['outsideName']}, replicaSetName = iDeployConfig['replicaSetName'], 
     shardedClusterName = iDeployConfig['shardedClusterName'], deploymentType = iDeployConfig['deploymentType'])
