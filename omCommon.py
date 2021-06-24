@@ -16,8 +16,7 @@ try:
   import glob
   import requests
   import json
-  import socket
-  import sys
+  import re
   from requests.auth import HTTPDigestAuth
   from random import randint
   from time import sleep
@@ -64,6 +63,35 @@ def put(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None
   for i in range(0,2):
     while True:
       resp = requests.put(baseurl.rstrip('/') + endpoint, auth=HTTPDigestAuth(publicKey, privateKey), verify = ca_cert_path, cert = key, timeout = 10, data = json.dumps(data), headers = header)
+      if resp.status_code == 200:
+        return resp
+      elif resp.status_code == 409:
+        print("Contention issues: %s" % resp.text)
+        sleep(randint(1,5))
+        continue
+      else:
+        print("""\033[91mERROR!\033[98m PUT response was %s, not `200`\033[m""" % resp.status_code)
+        print(resp.text)
+        raise requests.exceptions.RequestException
+
+# /
+  # post function to perform POST a payload to a REST API endpoint over HTTPS
+  #
+  # Inputs:
+  #   baseurl: The URL for Ops Manager, including the base API, e.g. `htts://ops-manager.gov.au:8443/api/public/v1.0`
+  #   endpoint: The desired endpoint starting with a slash, e.g. `/groups/{PROJECT-ID}/automationConfig`
+  #   data: JSON paylod to upload
+  #   ca_cert_path: The absolute path, including file name, of the CA certificate
+  #   privateKey: The private key portion of the Ops Manager API Access Key
+  #   publicKey: The public key portion of the Ops Manager API Access Key
+  #   key: The absolute path to the combined private key and X.509 certificate. OPTIONAL
+# /
+def post(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None):
+  header = {'Content-Type': 'application/json'}
+  # Attempt three times if we have contention
+  for i in range(0,2):
+    while True:
+      resp = requests.post(baseurl.rstrip('/') + endpoint, auth=HTTPDigestAuth(publicKey, privateKey), verify = ca_cert_path, cert = key, timeout = 10, data = json.dumps(data), headers = header)
       if resp.status_code == 200:
         return resp
       elif resp.status_code == 409:
@@ -251,6 +279,154 @@ def createShardedCluster(shardedClusterName, configServerReplicaSet):
 
   return baseShardConfig
 
+def newHostId(members, replicaSetName):
+  if type(members) is not list:
+    raise "`members` must be a list"
+
+  # remove non members of this replica set/shard
+  reExpression = '^' + replicaSetName + '_' + '.*$'
+  regex = re.compile(reExpression)
+  filterList = [i for i in members if regex.match(i)]
+
+  filterList.sort()
+
+  # determine the new replica set member name
+  if len(filterList) > 0:
+    # get the next number in the list
+    current = 0
+    prev = 0
+    for member in filterList:
+      exploded = member.split('_')
+      try:
+        print(exploded[-1])
+        if int(exploded[-1]) > (prev + 2):
+          newMemberId = replicaSetName + '_' + str(prev + 1)
+          break
+        else:
+          prev = current
+          current = int(exploded[-1])
+      except ValueError as e:
+        continue
+    newMemberId = replicaSetName + '_' + str(current + 1)
+  else:
+    newMemberId = replicaSetName + '_' + str(0)
+
+  return newMemberId
+
+
+# /
+  # checkProcesses determines if a member is already a process, if so it checks it is the same as desired. If it is not the same the process is replaced, if it is missing it is created
+def checkProcesses(currentProcess, newProcess, replicaSetName):
+  replaceData = True
+  memberFound = False
+  memberList = []
+  currentHost = None
+
+  # check the new member is in the current configuration and determine if the same
+  if len(currentProcess) > 0:
+    for member in currentProcess:
+      # add member to list so we can generate a unique member name if required
+      memberList.append(member['name'])
+      if member['hostname'] == newProcess['hostname']:
+        memberFound = True
+
+        # set the _id to what it currently is
+        newProcess['name'] = member['name']
+        currentHost = member['name']
+
+        # compare the two objects are the same
+        if json.dumps(member, sort_keys = True) != json.dumps(newProcess, sort_keys = True):
+          currentProcess.pop(currentProcess.index(member))
+        else:
+          replaceData = False
+          break
+
+  # insert the new member if required
+  if replaceData is True and memberFound is False:
+    newProcess['name'] = newHostId(members = memberList, replicaSetName = replicaSetName)
+    currentHost = newProcess['name']
+  if replaceData == True:
+    currentProcess.append(newProcess)
+
+  return replaceData,currentProcess,currentHost
+
+def checkReplicaSet(currentReplicaSets, replicaSetName, memberName, memberConfig):
+  if type(currentReplicaSets) is not list:
+    raise "`currentReplicaSets` must be a list"
+
+  replaceData = True
+  replicaSetIds = []
+  rsIndex = None
+  memberIndex = False
+  memberCount= 0
+
+  memberConfig['host'] = memberName
+
+  # Determine if the member is in a replica set
+  if len(currentReplicaSets) > 0:
+    # go through all the replica seets
+    for replicaSets in currentReplicaSets:
+      # record the `_id` of each replica set
+      replicaSetIds.append(currentReplicaSets[replicaSets]['_id'])
+      # if the replica set `_id` matches the desried replica set name we record the element position
+      if replicaSets['_id'] == replicaSetName:
+        rsIndex = currentReplicaSets.index(replicaSets)
+        memberCount = len(replicaSets['members'])
+        # find if our member is in the replica set already and remove if so
+        for member in replicaSets['members']:
+          if member['_id'] == replicaSetName:
+            replicaSetPresent = True
+          # determine the current member and remove it from the array
+          if member['host'] == memberName:
+            memberIndex = currentReplicaSets[replicaSets]['members'].index(member)
+            break
+        break
+
+  if rsIndex is None:
+    # add replica set skeleton
+    currentReplicaSets.append(createReplicaSet(replicaSetName))
+    rsIndex = 0
+  if memberIndex is None:
+    # set the replica set member _id to the legnth of the members array
+    memberConfig['_id'] = memberCount
+    currentReplicaSets[rsIndex]['members'].append(memberConfig)
+  elif rsIndex is not None and memberIndex is not None:
+    # check if the current member is the same as new member, replace if not
+    if json.dumps(member, sortKey = True) != json.dumps(memberConfig, sort_keys = True):
+      currentReplicaSets[replicaSets]['members'][memberIndex] = memberConfig
+    else:
+      replaceData = False
+
+  return replaceData,currentReplicaSets
+
+def checkMonitoring(currentBackup, fqdn, backup = True):
+  # Setup the backup agent, if required
+  buPresent = None
+  for bu in currentBackup:
+    if bu['hostname'] == fqdn:
+      buPresent = currentBackup.index(bu)
+      break
+  if backup == True and buPresent == None:
+    currentBackup.append({"hostname": fqdn})
+  if backup == False and buPresent != None:
+    currentBackup.pop(buPresent)
+
+  return currentBackup
+
+def checkMonitoring(currentMonitoring, fqdn, monitoring = False):
+  # Setup monitoring agent, if required
+  monPresent = None
+  for mon in currentMonitoring:
+    if mon['hostname'] == fqdn:
+      monPresent = currentMonitoring.index(mon)
+      break
+  if monitoring == True and monPresent == None:
+    currentMonitoring.append({"hostname": fqdn})
+  if monitoring == False and monPresent != None:
+    currentMonitoring.pop(monPresent)
+
+  return currentMonitoring
+
 # /
   # createReplicaSet function to create new replica sets if absent
   #
@@ -259,90 +435,12 @@ def createShardedCluster(shardedClusterName, configServerReplicaSet):
   #   replicaSetName: name of the replica set
 # /
 def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True, shardedClusterName = None, configServer = None, deploymentType = 'rs'):
-  if deploymentType not in ['rs','sh','cs', 'ms']:
-    raise Exception("`deploymentType` must be either 'rs' for replica set member, 'sh' for shard member, 'cs' for config server member, or 'ms' for mongos")
-  if deploymentType == 'ms':
-    replicaSetName = 'mongos'
 
   config = currentConfig
-  currentMember = None
-  rsMemberName = None
-  processMemberName = None
-  processMemberList = []
-  rsMemberList = []
-  replicaSetPresent = None
-  replicaSetIds = []
   shardedClusterPresent = None
   shardPresent = None
-  shardList = []
-
-  # determine if the member is already in the deployment
-  if 'processes' in config and len(config['processes']) > 0:
-    for member in config['processes']:
-      # add member to list so we can generate a unique member name if required
-      processMemberList.append(member['name'])
-      if member['hostname'] == fqdn:
-        processMemberName = member['name']
-        currentMember = member['name']
-        config['processes'].pop(config['processes'].index(member))
-  processMemberList.sort()
-
-  # add member
-  if currentMember == None and len(processMemberList) > 0:
-    processMemberConfig['name'] = replicaSetName + '_' + str(int(processMemberList[-1].split('_')[-1]) + 1)
-  elif currentMember == None:
-    processMemberConfig['name'] = replicaSetName + '_0'
-  else:
-    processMemberConfig['name'] = processMemberName
-  config['processes'].append(processMemberConfig)
 
   if deploymentType != 'ms':
-
-    # Determine if the member is in a replica set
-    if 'replicaSets' in config and len(config['replicaSets']) > 0:
-
-      # go through all the replica seets
-      for replicaSets in range(len(config['replicaSets'])):
-
-        # record the `_id` of each replica set
-        replicaSetIds.append(config['replicaSets'][replicaSets]['_id'])
-
-        # if the replica set `_id` matches the desried replica set name we record the element position
-        if config['replicaSets'][replicaSets]['_id'] == replicaSetName:
-          replicaSetPresent = replicaSets
-
-          # find if our member is in the replica set already and remove if so
-          for member in range(len(config['replicaSets'][replicaSets]['members'])):
-            rsMemberList.append(config['replicaSets'][replicaSets]['members'][member]['_id'])
-
-            # determine the current member and remove it from the array
-            if config['replicaSets'][replicaSets]['members'][member]['host'] == currentMember:
-              rsMemberName = config['replicaSets'][replicaSets]['members'][member]['_id']
-              config['replicaSets'][replicaSets]['members'].pop(member)
-      rsMemberList.sort()
-    else: 
-      # add replica set skeleton
-      rsConfig = createReplicaSet(replicaSetName)
-      config['replicaSets'].append(rsConfig)
-      replicaSetPresent = 0
-
-    if replicaSetPresent == None:
-      # add replica set skeleton
-      replicaSetPresent = len(replicaSetIds)
-      rsConfig = createReplicaSet(replicaSetName)
-      config['replicaSets'].append(rsConfig)
-
-    # add member
-    if rsMemberName == None and len(rsMemberList) > 0:
-      rsMemberConfig['_id'] = int(rsMemberList[-1] + 1)
-    elif rsMemberName == None:
-      rsMemberConfig['_id'] = 0
-    else:
-      rsMemberConfig['_id'] = rsMemberName
-    rsMemberConfig['host'] = processMemberConfig['name']
-
-    # add replica set member to replica set
-    config['replicaSets'][replicaSetPresent]['members'].append(rsMemberConfig)
 
     # add to sharded cluster if required (e.g. if not a replica set or not a config server)
     if shardedClusterName != None and deploymentType == 'sh':
@@ -370,27 +468,5 @@ def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, pr
           "_id": replicaSetName,
           "rs": replicaSetName
         })
+  return any(replaceP, replaceRS),config
 
-  # Setup the backup agent, if required
-  buPresent = None
-  for bu in config['backupVersions']:
-    if bu['hostname'] == fqdn:
-      buPresent = config['backupVersions'].index(bu)
-      break
-  if backup == True and buPresent == None:
-    config['backupVersions'].append({"hostname": fqdn})
-  if backup == False and buPresent != None:
-    config['backupVersions'].pop(buPresent)
-
-  # Setup monitoring agent, if required
-  monPresent = None
-  for mon in config['monitoringVersions']:
-    if mon['hostname'] == fqdn:
-      monPresent = config['monitoringVersions'].index(mon)
-      break
-  if monitoring == True and monPresent == None:
-    config['monitoringVersions'].append({"hostname": fqdn})
-  if monitoring == False and monPresent != None:
-    config['monitoringVersions'].pop(monPresent)
-
-  return config

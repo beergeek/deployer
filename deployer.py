@@ -6,6 +6,7 @@ try:
   import re
   import socket
   import sys
+  from time import sleep
 except ImportError as e:
   print(e)
   exit(1)
@@ -78,7 +79,7 @@ def main():
     # Create the replica set member
     rsMemberConfig = omCommon.createReplicaSetMember(replicaSetName = iDeployConfig['replicaSetName'], priority = iDeployConfig['priority'], arbiter = iDeployConfig['arbiter'], horizons = {'OUTSIDE': iDeployConfig['outsideName']})
 
-    # get teh current configuration
+    # get the current configuration
     currentConfig = omCommon.get(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
 
     # add the automation agent section if missing
@@ -89,16 +90,49 @@ def main():
     currentConfig.pop('version')
 
     # get the full config payload
-    requiredConfig = omCommon.findAndReplaceMember(fqdn = iDeployConfig['fqdn'], replicaSetName = iDeployConfig['replicaSetName'], currentConfig = currentConfig, rsMemberConfig = rsMemberConfig, processMemberConfig = processMemberConfig, monitoring = iDeployConfig['monitoring'], backup = iDeployConfig['backup'], 
-      shardedClusterName = iDeployConfig['shardedClusterName'], configServer = iDeployConfig['configServerReplicaSet'], deploymentType = iDeployConfig['deploymentType'])
+    # determine if the member is already in the deployment
+    replaceP,currentConfig['processes'],currentHost = omCommon.checkProcesses(currentProcess = currentConfig['processes'], newProcess = processMemberConfig, replicaSetName = iDeployConfig['replicaSetName'])
+
+    if iDeployConfig['deploymentType'] != 'ms':
+      replaceRS,currentConfig['replicaSets'] = omCommon.checkReplicaSet(currentReplicaSets = currentConfig['replicaSets'], replicaSetName = iDeployConfig['replicaSetName'], memberName = currentHost, memberConfig = rsMemberConfig)
+
+    replaceBU,currentConfig['backupVersions'] = omCommon.checkBackups(currentBackups = currentConfig['backupVersions'], fqdn = iDeployConfig['fqdn'], backup = iDeployConfig['backup'])
+
+    replaceMon,currentConfig['monitoringVersions'] = omCommon.checkMonitoring(currentMonitoring = currentConfig['monitoringVersions'], fqdn = iDeployConfig['fqdn'], monitoring = iDeployConfig['monitoring'])
+
+    # take a copy of the config
     f = open((iDeployConfig['hostname'] + '-' + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"), 'w')
-    f.write(json.dumps(requiredConfig, indent=2, sort_keys=True))
+    f.write(json.dumps(currentConfig, indent=2, sort_keys=True))
     f.close()
 
-    # Send config
-    reply = omCommon.put(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', data = requiredConfig, publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
-    print("Reply from Ops Manager: %s" % reply)
-  #except Exception as e:
+    if any([replaceP, replaceRS, replaceBU, replaceMon]):
+      checkCount = 0
+      print("Replacing config...")
+      # Send config
+      reply = omCommon.put(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', data = currentConfig, publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+      print("Reply from Ops Manager: %s" % reply)
+
+      # get status of the plan
+      while checkCount < 20:
+        achievedPlan = False
+        planStatus = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationStatus', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+        for plan in planStatus['processes']:
+          if plan['lastGoalVersionAchieved'] != planStatus['goalVersion']:
+            if plan['errorCode'] != 0:
+              print("\033[91mERROR!\033[98m %s\n%s\n" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
+            else:
+              print("Applying stage: %s" % plan['plan'])
+          else:
+            achievedPlan = True
+            break
+        checkCount += 1
+        # sleep and wait to check again
+        sleep(15)
+      if achievedPlan is False:
+        print("\033[91mERROR!\033[98m, the plan has not been applied.")
+    else:
+      print("Current config is correct, not replacing")
+    #except Exception as e:
   #  print(e)
 
 if __name__ == "__main__": main()
