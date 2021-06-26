@@ -402,30 +402,36 @@ def checkReplicaSet(currentReplicaSets, replicaSetName, memberName, memberConfig
 def checkMonitoring(currentBackup, fqdn, backup = True):
   # Setup the backup agent, if required
   buPresent = None
+  replaceBU = False
   for bu in currentBackup:
     if bu['hostname'] == fqdn:
       buPresent = currentBackup.index(bu)
       break
   if backup == True and buPresent == None:
     currentBackup.append({"hostname": fqdn})
+    replaceBU = True
   if backup == False and buPresent != None:
     currentBackup.pop(buPresent)
+    replaceBU = True
 
-  return currentBackup
+  return replaceBU,currentBackup
 
 def checkMonitoring(currentMonitoring, fqdn, monitoring = False):
   # Setup monitoring agent, if required
   monPresent = None
+  replaceMon = False
   for mon in currentMonitoring:
     if mon['hostname'] == fqdn:
       monPresent = currentMonitoring.index(mon)
       break
   if monitoring == True and monPresent == None:
     currentMonitoring.append({"hostname": fqdn})
+    replaceMon = True
   if monitoring == False and monPresent != None:
     currentMonitoring.pop(monPresent)
+    replaceMon = True
 
-  return currentMonitoring
+  return replaceMon,currentMonitoring
 
 # /
   # createReplicaSet function to create new replica sets if absent
@@ -434,39 +440,34 @@ def checkMonitoring(currentMonitoring, fqdn, monitoring = False):
   #   fqdn: the FQDN of the pod, **NOT** the DNS Split Horizon name
   #   replicaSetName: name of the replica set
 # /
-def findAndReplaceMember(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True, shardedClusterName = None, configServer = None, deploymentType = 'rs'):
+def checkShard(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True, shardedClusterName = None, configServer = None, deploymentType = 'rs'):
 
-  config = currentConfig
   shardedClusterPresent = None
   shardPresent = None
+  replaceSH = False
 
-  if deploymentType != 'ms':
-
-    # add to sharded cluster if required (e.g. if not a replica set or not a config server)
-    if shardedClusterName != None and deploymentType == 'sh':
-
-      if 'sharding' in config and len(config['sharding']) > 0:
-        # check if our sharded cluster exists
-        for shardedCluster in config['sharding']:
-
-          if shardedCluster['name'] == shardedClusterName:
-            shardedClusterPresent = config['sharding'].index(shardedCluster)
-
-            # Check the shard is present
-            for replicaSets in shardedCluster['shards']:
-              if replicaSets['_id'] == replicaSetName:
-                shardPresent = True
-                break
-      # Create the sharded cluster if it does not exist
-      if shardedClusterPresent == None:
-        config['sharding'].append(createShardedCluster(shardedClusterName, configServer))
-        shardedClusterPresent = len(config['sharding']) - 1
-      # create the shard if not present
-      if shardPresent == None:
-        config['sharding'][shardedClusterPresent]['shards'].append({
-          "tags": [],
-          "_id": replicaSetName,
-          "rs": replicaSetName
-        })
-  return any(replaceP, replaceRS),config
+  if 'sharding' in currentConfig and len(currentConfig['sharding']) > 0:
+    # check if our sharded cluster exists
+    for shardedCluster in currentConfig['sharding']:
+      if shardedCluster['name'] == shardedClusterName:
+        shardedClusterPresent = currentConfig['sharding'].index(shardedCluster)
+        # Check the shard is present
+        for replicaSets in shardedCluster['shards']:
+          if replicaSets['_id'] == replicaSetName:
+            shardPresent = True
+            break
+  # Create the sharded cluster if it does not exist
+  if shardedClusterPresent == None:
+    currentConfig['sharding'].append(createShardedCluster(shardedClusterName, configServer))
+    shardedClusterPresent = len(currentConfig['sharding']) - 1
+    replaceSH = True
+  # create the shard if not present
+  if shardPresent == None:
+    currentConfig['sharding'][shardedClusterPresent]['shards'].append({
+      "tags": [],
+      "_id": replicaSetName,
+      "rs": replicaSetName
+    })
+    replaceSH = True
+  return replaceSH,currentConfig
 

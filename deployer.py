@@ -74,18 +74,22 @@ def main():
 
     # get current alerts
     # code for alerts
-    currentAlerts = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+    currentAlerts = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs',
+      publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
     print(currentAlerts)
 
     # Create the process
-    processMemberConfig = omCommon.createProcessMember(fqdn = iDeployConfig['fqdn'], subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'], mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': iDeployConfig['outsideName']}, replicaSetName = iDeployConfig['replicaSetName'], 
-    shardedClusterName = iDeployConfig['shardedClusterName'], deploymentType = iDeployConfig['deploymentType'])
+    processMemberConfig = omCommon.createProcessMember(fqdn = iDeployConfig['fqdn'], subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'],
+      mongoDBVersion = iDeployConfig['mongoDBVersion'], horizons = {'OUTSIDE': iDeployConfig['outsideName']}, replicaSetName = iDeployConfig['replicaSetName'], 
+      shardedClusterName = iDeployConfig['shardedClusterName'], deploymentType = iDeployConfig['deploymentType'])
 
     # Create the replica set member
-    rsMemberConfig = omCommon.createReplicaSetMember(replicaSetName = iDeployConfig['replicaSetName'], priority = iDeployConfig['priority'], arbiter = iDeployConfig['arbiter'], horizons = {'OUTSIDE': iDeployConfig['outsideName']})
+    rsMemberConfig = omCommon.createReplicaSetMember(replicaSetName = iDeployConfig['replicaSetName'], priority = iDeployConfig['priority'],
+      arbiter = iDeployConfig['arbiter'], horizons = {'OUTSIDE': iDeployConfig['outsideName']})
 
     # get the current configuration
-    currentConfig = omCommon.get(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+    currentConfig = omCommon.get(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig',
+      publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
 
     # add the automation agent section if missing
     currentConfig = omCommon.add_missing_aa(currentConfig = currentConfig, opsManagerAddress = iDeployConfig['omBaseURL'])
@@ -96,31 +100,39 @@ def main():
 
     # get the full config payload
     # determine if the member is already in the deployment
-    replaceP,currentConfig['processes'],currentHost = omCommon.checkProcesses(currentProcess = currentConfig['processes'], newProcess = processMemberConfig, replicaSetName = iDeployConfig['replicaSetName'])
+    replaceP,currentConfig['processes'],currentHost = omCommon.checkProcesses(currentProcess = currentConfig['processes'], newProcess = processMemberConfig,
+      replicaSetName = iDeployConfig['replicaSetName'])
 
     if iDeployConfig['deploymentType'] != 'ms':
-      replaceRS,currentConfig['replicaSets'] = omCommon.checkReplicaSet(currentReplicaSets = currentConfig['replicaSets'], replicaSetName = iDeployConfig['replicaSetName'], memberName = currentHost, memberConfig = rsMemberConfig)
+      replaceRS,currentConfig['replicaSets'] = omCommon.checkReplicaSet(currentReplicaSets = currentConfig['replicaSets'], replicaSetName = iDeployConfig['replicaSetName'],
+      memberName = currentHost, memberConfig = rsMemberConfig)
 
     replaceBU,currentConfig['backupVersions'] = omCommon.checkBackups(currentBackups = currentConfig['backupVersions'], fqdn = iDeployConfig['fqdn'], backup = iDeployConfig['backup'])
 
-    replaceMon,currentConfig['monitoringVersions'] = omCommon.checkMonitoring(currentMonitoring = currentConfig['monitoringVersions'], fqdn = iDeployConfig['fqdn'], monitoring = iDeployConfig['monitoring'])
-
-    # take a copy of the config
-    f = open((iDeployConfig['hostname'] + '-' + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"), 'w')
-    f.write(json.dumps(currentConfig, indent=2, sort_keys=True))
-    f.close()
+    replaceMon,currentConfig['monitoringVersions'] = omCommon.checkMonitoring(currentMonitoring = currentConfig['monitoringVersions'], fqdn = iDeployConfig['fqdn'],
+      monitoring = iDeployConfig['monitoring'])
 
     if any([replaceP, replaceRS, replaceBU, replaceMon]):
+
       checkCount = 0
       print("Replacing config...")
+
+      # take a copy of the config
+      f = open((iDeployConfig['hostname'] + '-' + datetime.now().strftime("%Y%m%d%H%M%S") + ".json"), 'w')
+      f.write(json.dumps(currentConfig, indent=2, sort_keys=True))
+      f.close()
+
       # Send config
-      reply = omCommon.put(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', data = currentConfig, publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+      reply = omCommon.put(baseurl = iDeployConfig['omBaseURL'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationConfig', data = currentConfig,
+        publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
       print("Reply from Ops Manager: %s" % reply)
 
       # get status of the plan
       while checkCount < 20:
         achievedPlan = False
-        planStatus = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationStatus', publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+        planStatus = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationStatus', publicKey = iDeployConfig['publicKey'],
+        privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+        
         for plan in planStatus['processes']:
           if plan['lastGoalVersionAchieved'] != planStatus['goalVersion']:
             if plan['errorCode'] != 0:
