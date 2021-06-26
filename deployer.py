@@ -92,7 +92,7 @@ def main():
       publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
 
     # add the automation agent section if missing
-    currentConfig = omCommon.add_missing_aa(currentConfig = currentConfig, opsManagerAddress = iDeployConfig['omBaseURL'])
+    addAA,currentConfig = omCommon.add_missing_aa(currentConfig = currentConfig, opsManagerAddress = iDeployConfig['omBaseURL'])
 
     # remove keys that are not required
     currentConfig.pop('mongoDbVersions')
@@ -107,12 +107,16 @@ def main():
       replaceRS,currentConfig['replicaSets'] = omCommon.checkReplicaSet(currentReplicaSets = currentConfig['replicaSets'], replicaSetName = iDeployConfig['replicaSetName'],
       memberName = currentHost, memberConfig = rsMemberConfig)
 
+      if iDeployConfig['shardedClusterName']:
+        replaceSH,currentConfig['sharding'] = omCommon.checkShard(currentConfig = currentConfig['sharding'], replicaSetName = currentConfig['replicaSets'],
+          shardedClusterName = iDeployConfig['shardedClusterName'], configServer =iDeployConfig['configServerReplicaSet'])
+
     replaceBU,currentConfig['backupVersions'] = omCommon.checkBackups(currentBackups = currentConfig['backupVersions'], fqdn = iDeployConfig['fqdn'], backup = iDeployConfig['backup'])
 
     replaceMon,currentConfig['monitoringVersions'] = omCommon.checkMonitoring(currentMonitoring = currentConfig['monitoringVersions'], fqdn = iDeployConfig['fqdn'],
       monitoring = iDeployConfig['monitoring'])
 
-    if any([replaceP, replaceRS, replaceBU, replaceMon]):
+    if any([addAA, replaceP, replaceRS, replaceSH, replaceBU, replaceMon]):
 
       checkCount = 0
       print("Replacing config...")
@@ -132,7 +136,7 @@ def main():
         achievedPlan = False
         planStatus = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/automationStatus', publicKey = iDeployConfig['publicKey'],
         privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
-        
+
         for plan in planStatus['processes']:
           if plan['lastGoalVersionAchieved'] != planStatus['goalVersion']:
             if plan['errorCode'] != 0:

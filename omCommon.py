@@ -115,6 +115,8 @@ def post(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = Non
   #   
 # /
 def add_missing_aa(currentConfig, opsManagerAddress, aaVersion = None):
+  addNewAA = False
+
   if 'agentVersion' not in currentConfig:
     if aaVersion == None:
       for f in glob.glob('/opt/mongodb-mms-automation/versions/mongodb-mms-automation-agent-*'):
@@ -127,8 +129,9 @@ def add_missing_aa(currentConfig, opsManagerAddress, aaVersion = None):
       "directoryUrl": opsManagerAddress.rstrip('/') + "/download/agent/automation/",
       "name": aaVersion
     }
+    addNewAA = True
 
-  return currentConfig
+  return addNewAA,currentConfig
 
 # /
   # createProcessMember funtion to create a new process member
@@ -440,17 +443,17 @@ def checkMonitoring(currentMonitoring, fqdn, monitoring = False):
   #   fqdn: the FQDN of the pod, **NOT** the DNS Split Horizon name
   #   replicaSetName: name of the replica set
 # /
-def checkShard(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMemberConfig, monitoring = True, backup = True, shardedClusterName = None, configServer = None, deploymentType = 'rs'):
+def checkShard(currentConfig, replicaSetName, shardedClusterName = None, configServer = None):
 
   shardedClusterPresent = None
   shardPresent = None
   replaceSH = False
 
-  if 'sharding' in currentConfig and len(currentConfig['sharding']) > 0:
+  if len(currentConfig) > 0:
     # check if our sharded cluster exists
     for shardedCluster in currentConfig['sharding']:
       if shardedCluster['name'] == shardedClusterName:
-        shardedClusterPresent = currentConfig['sharding'].index(shardedCluster)
+        shardedClusterPresent = currentConfig.index(shardedCluster)
         # Check the shard is present
         for replicaSets in shardedCluster['shards']:
           if replicaSets['_id'] == replicaSetName:
@@ -458,16 +461,17 @@ def checkShard(fqdn, replicaSetName, currentConfig, rsMemberConfig, processMembe
             break
   # Create the sharded cluster if it does not exist
   if shardedClusterPresent == None:
-    currentConfig['sharding'].append(createShardedCluster(shardedClusterName, configServer))
-    shardedClusterPresent = len(currentConfig['sharding']) - 1
+    currentConfig.append(createShardedCluster(shardedClusterName, configServer))
+    shardedClusterPresent = len(currentConfig) - 1
     replaceSH = True
   # create the shard if not present
   if shardPresent == None:
-    currentConfig['sharding'][shardedClusterPresent]['shards'].append({
+    currentConfig[shardedClusterPresent]['shards'].append({
       "tags": [],
       "_id": replicaSetName,
       "rs": replicaSetName
     })
     replaceSH = True
+
   return replaceSH,currentConfig
 
