@@ -18,7 +18,7 @@ def configChecker(iConfig, args):
     allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
     iConfig['fqdn'] = sys.argv[1]
     if iConfig['fqdn'][-1] == ".":
-      iConfig['fqdn'] = fqdn[:-1] # strip exactly one dot from the right, if present
+      iConfig['fqdn'] = iConfig['fqdn'][:-1] # strip exactly one dot from the right, if present
     if all(allowed.match(x) for x in iConfig['fqdn'].split(".")) == False:
       print("%s is not a valid FQDN" % iConfig['fqdn'])
       raise Exception("%s is not a valid FQDN" % iConfig['fqdn'])
@@ -57,6 +57,8 @@ def configChecker(iConfig, args):
     iConfig['replicaSetName'] = None
   if 'replicaSetName' not in iConfig:
     raise Exception("The replica set/shard name must be included in the `replicaSetName` parameter")
+  if 'requireAlerts' not in iConfig:
+    iConfig['requiredAlerts'] = None
 
   return iConfig
 
@@ -77,6 +79,20 @@ def main():
     currentAlerts = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs',
       publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
     print(currentAlerts)
+
+    replaceAlerts,newAlerts,updateAlerts = omCommon.checkAlerts(currentAlerts['results'], iDeployConfig['requiredAlerts'])
+
+    if replaceAlerts:
+      if newAlerts:
+        for alert in newAlerts:
+          result = omCommon.post(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs',
+            publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'], data = alert)
+          print(result)
+      if updateAlerts:
+        for alert in updateAlerts:
+          result = omCommon.put(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs/' + alert['id'],
+            publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'], data = alert)
+          print(result)
 
     # Create the process
     processMemberConfig = omCommon.createProcessMember(fqdn = iDeployConfig['fqdn'], subDomain = iDeployConfig['subDomain'], port = iDeployConfig['port'],

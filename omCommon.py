@@ -12,6 +12,9 @@
   #   findAndReplaceMember: function to determine if member exists in config, create if not, replace if exists. Creates the replica set if missing
 # /
 
+from re import X
+
+
 try:
   import glob
   import requests
@@ -92,14 +95,14 @@ def post(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = Non
   for i in range(0,2):
     while True:
       resp = requests.post(baseurl.rstrip('/') + endpoint, auth=HTTPDigestAuth(publicKey, privateKey), verify = ca_cert_path, cert = key, timeout = 10, data = json.dumps(data), headers = header)
-      if resp.status_code == 200:
+      if resp.status_code == 200 or resp.status_code == 201:
         return resp
       elif resp.status_code == 409:
         print("Contention issues: %s" % resp.text)
         sleep(randint(1,5))
         continue
       else:
-        print("""\033[91mERROR!\033[98m PUT response was %s, not `200`\033[m""" % resp.status_code)
+        print("""\033[91mERROR!\033[98m POST response was %s, not `200`\033[m""" % resp.status_code)
         print(resp.text)
         raise requests.exceptions.RequestException
 
@@ -474,4 +477,29 @@ def checkShard(currentConfig, replicaSetName, shardedClusterName = None, configS
     replaceSH = True
 
   return replaceSH,currentConfig
+
+def checkAlerts(currentAlerts, desiredAlerts):
+  # alert settings to check
+  checkKeys = [ 'eventTypeName', 'matchers', 'notifications', 'threshold', 'typeName', 'metricThreshold' ]
+  newAlerts = []
+  updateAlerts = []
+  groupId = currentAlerts[0]['groupId']
+  replaceAlert = False
+
+  if len(desiredAlerts) > 0:
+    for desiredAlert in desiredAlerts:
+      if any(currentAlert['eventTypeName'] == desiredAlert['eventTypeName'] for currentAlert in currentAlerts):
+          alert = [i for i in currentAlerts if i['eventTypeName'] == desiredAlert['eventTypeName']][0]
+          for k in checkKeys:
+            if k in desiredAlert:
+              if json.dumps(alert[k], sort_keys = True) != json.dumps(desiredAlert[k], sort_keys = True):
+                updateAlerts.append(dict({'id': alert['id']}, **desiredAlert))
+                replaceAlert = True
+                break
+      else:
+        desiredAlert['groupId'] = groupId
+        newAlerts.append(desiredAlert)
+        replaceAlert = True
+
+  return replaceAlert,newAlerts,updateAlerts
 
