@@ -1,0 +1,63 @@
+{{- $storageClass := .Values.storage.storageClass -}}
+{{- $storageSize := .Values.storage.size -}}
+{{- $hostPath := .Values.storage.hostPath -}}
+{{- $namespace := .Release.Namespace -}}
+---
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  name: {{ $storageClass }}
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    "helm.sh/resource-policy": keep
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+
+{{- $workerNodes := .Values.storage.workerNodes -}}
+{{- range $index, $workerNode := .Values.storage.workerNodes }}
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $storageClass }}-mongodb-dev-{{ $index }}
+  namespace: {{ $namespace }}
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: {{ $storageSize }}
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ $storageClass }}
+  local:
+    path: /data/db/data
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          {{- range $workerNodes }}
+          - {{ . }}
+          {{- end }}
+{{- end }}
+
+
+{{ range $k, $index := until (.Values.replicas | int) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name:  {{ $storageClass }}-mongodb-dev-{{ $index }}
+  annotations:
+    "helm.sh/resource-policy": keep
+spec:
+  storageClassName: {{ $storageClass }}
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ $storageSize }}
+{{- end -}}

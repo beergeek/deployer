@@ -1,0 +1,15 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "mongodb-kubernetes.name" . }}-svc
+  namespace: {{ .Release.Namespace }}
+spec:
+  publishNotReadyAddresses: true
+  clusterIP: None
+  selector:
+    app: {{ template "mongodb-kubernetes.name" . }}
+  ports:
+    - name: mongodb
+      port: 1234
+      targetPort: 1234

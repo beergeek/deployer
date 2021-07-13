@@ -1,0 +1,28 @@
+
+{{- if .Values.horizon.enabled }}
+{{- $nodePortStartValue  := (default (.Values.horizon.nodePortStartValue | int) 30000) -}}
+{{- $app := include "mongodb-kubernetes.name" . -}}
+{{- $clusterIP := splitList "." .Values.horizon.clusterIPStartValue -}}
+{{- $namespace := .Release.Namespace -}}
+{{ range $k, $index := until (.Values.replicas | int) }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ template "mongodb-kubernetes.name" $ }}-{{$index}}-svc
+  namespace: {{ $namespace }}
+spec:
+  clusterIP: {{ range $i,$j := $clusterIP }}{{ if lt $i 3 }}{{ $j }}.{{ end }}{{ end }}{{ add (last $clusterIP) ($k | int) }}
+  externalTrafficPolicy: Cluster
+  ports:
+  - nodePort: {{ add $nodePortStartValue $index }}
+    port: 27017
+    protocol: TCP
+    targetPort: 27017
+  selector:
+    app: {{ $app }}
+    statefulset.kubernetes.io/pod-name: {{ template "mongodb-kubernetes.name" $ }}-{{$index}}
+  sessionAffinity: None
+  type: NodePort
+{{- end }}
+{{- end }}

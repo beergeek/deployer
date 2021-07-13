@@ -1,0 +1,88 @@
+---
+
+deploymentName: mongodb-dev
+
+replicas: 3
+
+imageDetails:
+  name: ghcr.io/beergeek/mongodb_ea_om
+  version: 0.1.2
+
+logLevel: DEBUG
+
+mms:
+  enabled: true
+  baseUrl: https://mongod0.mongodb.local:8443
+  config:
+    mongodbVersion: 4.4.6-ent
+    arbiterMembers: []
+    priorityZeroMembers: []
+
+resources:
+  init:
+    limits:
+      cpu: 1
+      mem: 2Gi
+    requests:
+      cpu: 1
+      mem: 2Gi
+  mongodb:
+    limits:
+      cpu: 1
+      mem: 4Gi
+    requests:
+      cpu: 1
+      mem: 4Gi
+
+storage:
+  size: 10Gi
+  storageClass: data
+  hostPath: /data/db/data
+  workerNodes:
+  - mongod3
+  - mongod4
+  - mongod5
+  - mongod6
+  - mongod7
+
+tlsEnabled:
+  enabled: true
+  caConfigMap: ca
+  pemSecret: rs-dev-cert
+
+horizon:
+  enabled: true
+  nodePortStartValue: 30000
+  nodePortHost: mongod3.mongodb.local
+  clusterIPStartValue: '10.43.101.0'
+
+secrets:
+  adminSecret: mongodb-dev-adm
+  mmsSecret: mms-dev-secret
+
+configMap:
+  processManagement:
+    # do not enable forking because this is not manage by Ops Manager
+    timeZoneInfo: /usr/share/zoneinfo
+  setParameter:
+    authenticationMechanisms: SCRAM-SHA-256
+  net:
+    port: 27017
+    bindIp: 0.0.0.0
+    tls:
+      mode: requireTLS
+      CAFile: /data/ca/ca.pem
+      certificateKeyFile: /data/certs/server.pem
+      allowConnectionsWithoutCertificates: true
+      disabledProtocols: TLS1_0,TLS1_1
+  replication:
+    replSetName: rs0
+  storage:
+    dbPath: /data/db
+  systemLog:
+    path: /data/logs/mongod.log
+    destination: file
+    timeStampFormat: iso8601-local
+  security:
+    clusterAuthMode: x509
+    authorization: enabled

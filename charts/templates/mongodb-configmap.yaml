@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "mongodb-kubernetes.name" . }}-main
+  namespace: {{ .Release.Namespace }}
+data:
+  mongod.conf: |
+{{ toYaml .Values.configMap | indent 4 }}

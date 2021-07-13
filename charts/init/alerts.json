@@ -1,0 +1,356 @@
+{
+  "alerts": [
+    {
+      "eventTypeName": "MONITORING_AGENT_DOWN",
+      "typeName": "AGENT",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "HOST_SSL_CERTIFICATE_STALE",
+      "typeName": "HOST",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 1440,
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "JOINED_GROUP",
+      "typeName": "USER",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "OPLOG_BEHIND",
+      "typeName": "BACKUP",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "CLUSTER_MONGOS_IS_MISSING",
+      "typeName": "CLUSTER",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "RESYNC_REQUIRED",
+      "typeName": "BACKUP",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "BACKUP_AGENT_DOWN",
+      "typeName": "AGENT",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "INCONSISTENT_BACKUP_CONFIGURATION",
+      "typeName": "BACKUP",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 1440,
+          "roles": [
+            "GROUP_OWNER",
+            "GROUP_BACKUP_ADMIN"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "HOST_DOWN",
+      "typeName": "HOST",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "NO_PRIMARY",
+      "typeName": "REPLICA_SET",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "REPLICATION_OPLOG_WINDOW_RUNNING_OUT",
+      "typeName": "REPLICA_SET",
+      "threshold": {
+        "operator": "LESS_THAN",
+        "threshold": 72
+      },
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "roles": [
+            "GROUP_OWNER",
+            "GROUP_AUTOMATION_ADMIN"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
+      "typeName": "HOST_METRIC",
+      "notifications": [
+        {
+          "delayMin": 5,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "roles": [
+            "GROUP_OWNER",
+            "GROUP_MONITORING_ADMIN"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ],
+      "metricThreshold": {
+        "metricName": "OPLOG_SLAVE_LAG_MASTER_TIME",
+        "mode": "AVERAGE",
+        "operator": "GREATER_THAN",
+        "threshold": 20000,
+        "units": "MILLISECONDS"
+      }
+    },
+    {
+      "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
+      "typeName": "HOST_METRIC",
+      "notifications": [
+        {
+          "delayMin": 5,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ],
+      "metricThreshold": {
+        "metricName": "OPLOG_MASTER_LAG_TIME_DIFF",
+        "mode": "AVERAGE",
+        "operator": "LESS_THAN",
+        "threshold": 48,
+        "units": "HOURS"
+      }
+    },
+    {
+      "eventTypeName": "TOO_FEW_HEALTHY_MEMBERS",
+      "typeName": "REPLICA_SET",
+      "threshold": {
+        "operator": "LESS_THAN",
+        "threshold": 2
+      },
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 60,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ]
+    },
+    {
+      "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
+      "typeName": "HOST_METRIC",
+      "notifications": [
+        {
+          "delayMin": 0,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ],
+      "metricThreshold": {
+        "metricName": "DISK_PARTITION_UTILIZATION_DATA",
+        "mode": "AVERAGE",
+        "operator": "GREATER_THAN",
+        "threshold": 70,
+        "units": "RAW"
+      }
+    },
+    {
+      "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
+      "typeName": "HOST_METRIC",
+      "notifications": [
+        {
+          "delayMin": 5,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ],
+      "metricThreshold": {
+        "metricName": "EXTRA_INFO_PAGE_FAULTS",
+        "mode": "AVERAGE",
+        "operator": "GREATER_THAN",
+        "threshold": 10,
+        "units": "RAW"
+      }
+    },
+    {
+      "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
+      "typeName": "HOST_METRIC",
+      "notifications": [
+        {
+          "delayMin": 1,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ],
+      "metricThreshold": {
+        "metricName": "TICKETS_AVAILABLE_READS",
+        "mode": "AVERAGE",
+        "operator": "LESS_THAN",
+        "threshold": 10,
+        "units": "RAW"
+      }
+    },
+    {
+      "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
+      "typeName": "HOST_METRIC",
+      "notifications": [
+        {
+          "delayMin": 1,
+          "emailEnabled": true,
+          "intervalMin": 5,
+          "roles": [
+            "GROUP_OWNER"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ],
+      "metricThreshold": {
+        "metricName": "TICKETS_AVAILABLE_WRITES",
+        "mode": "AVERAGE",
+        "operator": "LESS_THAN",
+        "threshold": 10,
+        "units": "RAW"
+      }
+    },
+    {
+      "eventTypeName": "OUTSIDE_METRIC_THRESHOLD",
+      "matchers": [
+        {
+          "fieldName": "TYPE_NAME",
+          "operator": "CONTAINS",
+          "value": "SECONDARY"
+        }
+      ],
+      "typeName": "HOST_METRIC",
+      "notifications": [
+        {
+          "delayMin": 5,
+          "emailEnabled": true,
+          "intervalMin": 10,
+          "roles": [
+            "GROUP_OWNER",
+            "GROUP_AUTOMATION_ADMIN",
+            "GROUP_MONITORING_ADMIN"
+          ],
+          "smsEnabled": false,
+          "typeName": "GROUP"
+        }
+      ],
+      "metricThreshold": {
+        "metricName": "OPLOG_SLAVE_LAG_MASTER_TIME",
+        "mode": "AVERAGE",
+        "operator": "GREATER_THAN",
+        "threshold": 120,
+        "units": "SECONDS"
+      }
+    }  
+  ]
+}

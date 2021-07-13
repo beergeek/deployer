@@ -1,0 +1,191 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ template "mongodb-kubernetes.name" . }}
+spec:
+  serviceName: {{ template "mongodb-kubernetes.name" . }}-svc
+  replicas: {{ .Values.replicas | int }}
+  selector:
+    matchLabels:
+      app: {{ template "mongodb-kubernetes.name" . }}
+  template:
+    metadata:
+      labels:
+        app: {{ template "mongodb-kubernetes.name" . }}
+    spec:
+      securityContext:
+        runAsUser: 2000
+        runAsGroup: 2000
+        fsGroup: 2000
+      initContainers:
+      - name: config
+        image: {{ .Values.imageDetails.name }}:{{ .Values.imageDetails.version }}
+        imagePullPolicy: IfNotPresent
+        command: ["/bin/sh"]
+        {{- if not .Values.mms.enabled }}
+        args: ['-c', 'mkdir -p /data/db/logs && mongod --fork -f /data/conf/mongod.conf && python3 /init/rs.py']
+        {{- else }}
+        args: ['-c', 'mkdir -p /data/db/logs && python3 /init/agent.py && (/opt/mongodb-mms-automation/bin/mongodb-mms-automation-agent -f /data/config/automation-agent.config &) && python3 /init/deployer.py']
+        {{- end }}
+        resources:
+          limits:
+            cpu: {{ .Values.resources.init.limits.cpu }}
+            memory: {{ .Values.resources.init.limits.mem }}
+          requests:
+            cpu: {{ .Values.resources.init.requests.cpu }}
+            memory: {{ .Values.resources.init.requests.mem }}
+        ports:
+        - containerPort: {{ .Values.configMap.net.port | int }}
+          name: mdb
+        env:
+          - name: ADMINUSER
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.secrets.adminSecret}}
+                key: username
+          - name: ADMINPASSWD
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.secrets.adminSecret }}
+                key: passwd
+          - name: REPLICASET
+            value: {{ .Values.configMap.replication.replSetName }}
+          - name: PORT
+            value: {{ .Values.configMap.net.port | quote }}
+          - name: LOGLEVEL
+            value: {{ .Values.logLevel | quote }}
+          - name: HORIZONADDR
+            value: {{ .Values.horizon.nodePortHost | quote }}
+          - name: HORIZONPORT
+            value: {{ .Values.horizon.nodePortStartValue | quote }}
+          - name: VERSION
+            value: {{ .Values.mms.config.mongodbVersion | quote }}
+          {{- if .Values.mms.enabled }}
+          - name: MMSBASEURL
+            value: {{ .Values.mms.baseUrl}}
+          - name: MMSAPIKEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.secrets.mmsSecret }}
+                key: mmsApiKey
+          - name: MMSGROUPID
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.secrets.mmsSecret }}
+                key: mmsGroupId
+          - name: APIKEY
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.secrets.mmsSecret }}
+                key: mmsPrivateKey
+          - name: APIPUB
+            valueFrom:
+              secretKeyRef:
+                name: {{ .Values.secrets.mmsSecret }}
+                key: mmsPublicKey
+          {{- end }}
+        volumeMounts:
+        - name: data
+          mountPath: /data/db
+        - name: init
+          mountPath: /init
+          readOnly: true
+        {{- if .Values.tlsEnabled.enabled }}
+        - name: certs
+          mountPath: /data/certs
+          readOnly: true
+        - name: ca
+          mountPath: /data/ca
+          readOnly: true
+        {{- end }}
+        - name: config
+          mountPath: /data/config
+      containers:
+      - name: mongodb
+        image: {{ .Values.imageDetails.name }}:{{ .Values.imageDetails.version }}
+        imagePullPolicy: Always
+        command: ['/bin/sh']
+        {{- if not .Values.mms.enabled }}
+        args: ['-c', 'mongod -f /data/conf/mongod.conf']
+        {{- else }}
+        args: ['-c', '/opt/mongodb-mms-automation/bin/mongodb-mms-automation-agent -f /data/config/automation-agent.config']
+        {{- end }}
+        resources:
+          limits:
+            cpu: {{ .Values.resources.mongodb.limits.cpu }}
+            memory: {{ .Values.resources.mongodb.limits.mem }}
+          requests:
+            cpu: {{ .Values.resources.mongodb.requests.cpu }}
+            memory: {{ .Values.resources.mongodb.requests.mem }}
+        ports:
+        - containerPort: {{ .Values.configMap.net.port }}
+          name: mdb
+        volumeMounts:
+        - name: data
+          mountPath: /data/db
+        {{- if .Values.tlsEnabled.enabled }}
+        - name: certs
+          mountPath: /data/certs
+          readOnly: true
+        - name: ca
+          mountPath: /data/ca
+          readOnly: true
+        {{- end }}
+        {{- if not .Values.mms.enabled }}
+        - name: main
+          mountPath: /data/init
+          readOnly: true
+        {{- end }}
+        - name: config
+          mountPath: /data/config
+        securityContext:
+          allowPrivilegeEscalation: false
+        readinessProbe:
+          tcpSocket:
+            port: {{ .Values.configMap.net.port }}
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: {{ .Values.configMap.net.port }}
+          initialDelaySeconds: 45
+          periodSeconds: 20
+      volumes:
+      - name: init
+        configMap:
+          name: {{ template "mongodb-kubernetes.name" . }}-init
+          defaultMode: 0755
+      - name: main
+        configMap:
+          name: {{ template "mongodb-kubernetes.name" . }}-main
+          defaultMode: 0755
+      - name: config
+        emptyDir: {}
+      {{- if .Values.tlsEnabled.enabled }}
+      - name: certs
+        secret:
+          secretName: {{ .Values.tlsEnabled.pemSecret }}
+      - name: ca
+        configMap:
+          name: {{ .Values.tlsEnabled.caConfigMap }}
+      {{- end }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchExpressions:
+                  - key: "app"
+                    operator: In
+                    values:
+                    - {{ template "mongodb-kubernetes.name" . }}
+              topologyKey: "kubernetes.io/hostname"
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ "ReadWriteOnce" ]
+        resources:
+          requests:
+            storage: {{ .Values.storage.size }}
+        storageClassName: {{ .Values.storage.storageClass | default "\"\""}}
