@@ -2,7 +2,6 @@
 #
 try:
   import yaml
-  import json
   import logging
   from os import getenv,mkdir
   from os.path import isdir

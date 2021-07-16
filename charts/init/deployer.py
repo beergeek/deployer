@@ -205,8 +205,8 @@ def main():
           logging.debug("CurrentVersion: %s, GoalVersion: %s" % (plan['lastGoalVersionAchieved'], planStatus['goalVersion']))
           if plan['lastGoalVersionAchieved'] != planStatus['goalVersion']:
             if plan['errorCode'] != 0:
-              logging.exception("\033[91mERROR!\033[98m %s\n%s\n" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
-              print("\033[91mERROR!\033[98m %s\n%s\n" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
+              logging.warn("\033[91mERROR!\033[98m %s\n%s\n%s" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
+              print("\033[91mERROR!\033[98m %s\n%s\n%s" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
             else:
               logging.debug("Applying stage: %s" % plan['plan'])
               print("Applying stage: %s" % plan['plan'])
