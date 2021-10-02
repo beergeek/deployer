@@ -11,10 +11,6 @@
   #   createShardedCluster: function to create new sharded cluster if absent
   #   findAndReplaceMember: function to determine if member exists in config, create if not, replace if exists. Creates the replica set if missing
 # /
-
-from re import X
-
-
 try:
   import glob
   import requests
@@ -45,7 +41,7 @@ def get(baseurl, endpoint, ca_cert_path, privateKey, publicKey, key = None):
     group_data = json.loads(resp.text)
     return group_data
   else:
-    print("""\033[91mERROR!\033[98m GET response was %s, not `200`\033[m""" % resp.status_code)
+    print("""\033[91mERROR!\033[0;0m GET response was %s, not `200`""" % resp.status_code)
     print(resp.text)
     raise requests.exceptions.RequestException
 
@@ -74,7 +70,7 @@ def put(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = None
         sleep(randint(1,5))
         continue
       else:
-        print("""\033[91mERROR!\033[98m PUT response was %s, not `200`\033[m""" % resp.status_code)
+        print("""\033[91mERROR!\033[0;0m PUT response was %s, not `200`""" % resp.status_code)
         print(resp.text)
         raise requests.exceptions.RequestException
 
@@ -103,7 +99,7 @@ def post(baseurl, endpoint, data, ca_cert_path, privateKey, publicKey, key = Non
         sleep(randint(1,5))
         continue
       else:
-        print("""\033[91mERROR!\033[98m POST response was %s, not `200`\033[m""" % resp.status_code)
+        print("""\033[91mERROR!\033[0;0m POST response was %s, not `200`""" % resp.status_code)
         print(resp.text)
         raise requests.exceptions.RequestException
 
@@ -168,7 +164,7 @@ def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, c
     shardType = { "clusterRole": "shardsvr"}
     processType = 'mongod'
   # Create the DNS Split Horizon name
-  splitName = fqdn.split('.')[0] + '.' + subDomain
+  splitName = fqdn.split('.')[0] + '.' + fqdn.split('.')[1] 
 
   processBaseline = {
     "args2_6": {
@@ -205,7 +201,7 @@ def createProcessMember(fqdn, subDomain, port, replicaSetName, mongoDBVersion, c
     "manualMode": False,
     "processType": processType
   } 
-  processBaseline['alias'] = fqdn
+  processBaseline['alias'] = splitName
   processBaseline['args2_6']['net']['port'] = int(port)
   processBaseline['hostname'] = fqdn
   processBaseline['horizons'] = horizons
@@ -379,29 +375,33 @@ def checkReplicaSet(currentReplicaSets, replicaSetName, memberName, memberConfig
       replicaSetIds.append(replicaSets['_id'])
       # if the replica set `_id` matches the desried replica set name we record the element position
       if replicaSets['_id'] == replicaSetName:
+        logging.debug("\033[91mCurrent RS:\033[m %s" % replicaSets)
         rsIndex = currentReplicaSets.index(replicaSets)
         memberCount = len(replicaSets['members'])
         # find if our member is in the replica set already and remove if so
         for member in replicaSets['members']:
-          if member['_id'] == replicaSetName:
-            replicaSetPresent = True
+          logging.debug(member['host'])
           # determine the current member and remove it from the array
           if member['host'] == memberName:
+            logging.debug("Found member")
             memberIndex = replicaSets['members'].index(member)
-            break
+            #break
         break
 
   if rsIndex is None:
     # add replica set skeleton
     currentReplicaSets.append(createReplicaSet(replicaSetName))
     rsIndex = 0
+    logging.debug("\033[91mCreating replica set: %s\033[m" % replicaSetName)
   if memberIndex is None:
     # set the replica set member _id to the legnth of the members array
     memberConfig['_id'] = memberCount
+    logging.debug("\033[91mMember:\033[m %s" % memberConfig)
     currentReplicaSets[rsIndex]['members'].append(memberConfig)
+    logging.debug("\033[91mAdded %s to replica set %s\033[m" % (str(memberCount), rsIndex))
   elif rsIndex is not None and memberIndex is not None:
-    logging.debug("Replica Set index: %s" % rsIndex)
-    logging.debug("Member index: %s" % memberIndex)
+    logging.debug("\033[91mReplica Set index: %s\033[m" % rsIndex)
+    logging.debug("\033[91mMember index: %s\033[m" % memberIndex)
     # check if the current member is the same as new member, replace if not
     if json.dumps(currentReplicaSets[rsIndex], sort_keys = True) != json.dumps(memberConfig, sort_keys = True):
       currentReplicaSets[rsIndex]['members'][memberIndex] = memberConfig
@@ -499,6 +499,7 @@ def checkAlerts(currentAlerts, desiredAlerts):
           for k in checkKeys:
             if k in desiredAlert:
               if json.dumps(alert[k], sort_keys = True) != json.dumps(desiredAlert[k], sort_keys = True):
+                logging.debug("Alert incorrect! Current: %s\nDesired: %s" % (alert[k], desiredAlert[k]))
                 updateAlerts.append(dict({'id': alert['id']}, **desiredAlert))
                 replaceAlert = True
                 break
@@ -508,4 +509,3 @@ def checkAlerts(currentAlerts, desiredAlerts):
         replaceAlert = True
 
   return replaceAlert,newAlerts,updateAlerts
-

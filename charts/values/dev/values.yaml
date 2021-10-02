@@ -6,7 +6,7 @@ replicas: 3
 
 imageDetails:
   name: ghcr.io/beergeek/mongodb_ea_om
-  version: 0.1.2
+  version: 0.3.0
 
 logLevel: DEBUG
 
@@ -14,7 +14,7 @@ mms:
   enabled: true
   baseUrl: https://mongod0.mongodb.local:8443
   config:
-    mongodbVersion: 4.4.6-ent
+    mongodbVersion: 4.4.9-ent
     arbiterMembers: []
     priorityZeroMembers: []
 
@@ -36,7 +36,7 @@ resources:
 
 storage:
   size: 10Gi
-  storageClass: data
+  storageClass: data-dev
   hostPath: /data/db/data
   workerNodes:
   - mongod3

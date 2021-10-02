@@ -4,5 +4,14 @@ metadata:
   name: {{ template "mongodb-kubernetes.name" . }}-main
   namespace: {{ .Release.Namespace }}
 data:
+{{- if not .Values.mms.enabled }}
   mongod.conf: |
 {{ toYaml .Values.configMap | indent 4 }}
+{{- else}}
+  startAgent.py: |
+{{ .Files.Get "init/startAgent.py" | indent 4 }}
+  health.py: |
+{{ .Files.Get "init/health.py" | indent 4 }}
+  agentCommon.py: |
+{{ .Files.Get "init/agentCommon.py" | indent 4 }}
+{{- end }}

@@ -18,15 +18,18 @@ spec:
         runAsUser: 2000
         runAsGroup: 2000
         fsGroup: 2000
+      dnsConfig:
+        searches:
+        - mongodb.local
       initContainers:
       - name: config
         image: {{ .Values.imageDetails.name }}:{{ .Values.imageDetails.version }}
-        imagePullPolicy: IfNotPresent
+        imagePullPolicy: Always
         command: ["/bin/sh"]
         {{- if not .Values.mms.enabled }}
         args: ['-c', 'mkdir -p /data/db/logs && mongod --fork -f /data/conf/mongod.conf && python3 /init/rs.py']
         {{- else }}
-        args: ['-c', 'mkdir -p /data/db/logs && python3 /init/agent.py && (/opt/mongodb-mms-automation/bin/mongodb-mms-automation-agent -f /data/config/automation-agent.config &) && python3 /init/deployer.py']
+        args: ['-c', 'mkdir -p /data/db/logs && python3 /init/agent.py && (python3 /init/startAgent.py & ) && sleep 30 && python3 /init/deployer.py']
         {{- end }}
         resources:
           limits:
@@ -109,8 +112,13 @@ spec:
         {{- if not .Values.mms.enabled }}
         args: ['-c', 'mongod -f /data/conf/mongod.conf']
         {{- else }}
-        args: ['-c', '/opt/mongodb-mms-automation/bin/mongodb-mms-automation-agent -f /data/config/automation-agent.config']
+        args: ['-c', 'python3 /data/init/startAgent.py']
         {{- end }}
+        env:
+          {{- if .Values.mms.enabled }}
+          - name: MMSBASEURL
+            value: {{ .Values.mms.baseUrl}}
+          {{- end }}
         resources:
           limits:
             cpu: {{ .Values.resources.mongodb.limits.cpu }}
@@ -132,11 +140,9 @@ spec:
           mountPath: /data/ca
           readOnly: true
         {{- end }}
-        {{- if not .Values.mms.enabled }}
         - name: main
           mountPath: /data/init
           readOnly: true
-        {{- end }}
         - name: config
           mountPath: /data/config
         securityContext:
@@ -147,8 +153,10 @@ spec:
           initialDelaySeconds: 30
           periodSeconds: 10
         livenessProbe:
-          tcpSocket:
-            port: {{ .Values.configMap.net.port }}
+          exec:
+            command:
+              - python3
+              - /data/init/health.py
           initialDelaySeconds: 45
           periodSeconds: 20
       volumes:
@@ -170,6 +178,10 @@ spec:
         configMap:
           name: {{ .Values.tlsEnabled.caConfigMap }}
       {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: "rs-member"
+          whenUnsatisfiable: DoNotSchedule
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

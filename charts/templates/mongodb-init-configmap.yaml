@@ -11,11 +11,15 @@ data:
 {{ .Files.Get "init/deployer.py" | indent 4 }}
   agent.py: |
 {{ .Files.Get "init/agent.py" | indent 4 }}
+  agentCommon.py: |
+{{ .Files.Get "init/agentCommon.py" | indent 4 }}
   alerts.json: |
 {{ .Files.Get "init/alerts.json" | indent 4 }}
   mongod.conf: |
 {{ toYaml .Values.mms.config | indent 4 }}
 {{ toYaml .Values.configMap | indent 4 }}
+  startAgent.py: |
+{{ .Files.Get "init/startAgent.py" | indent 4 }}
 {{ else }}
   rs.py: |
 {{ .Files.Get "init/rs.py" | indent 4 }}

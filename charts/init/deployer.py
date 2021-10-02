@@ -19,9 +19,13 @@ def configChecker(iConfig):
   iConfig['fqdn'] = socket.getfqdn()
   iConfig['hostname'] = iConfig['fqdn'].split('.')[0]
   iConfig['splitName'] = iConfig['hostname'] + '.' + iConfig['subDomain']
-  iConfig[''] = iConfig['splitName'] + '.' + iConfig['dnsSuffix'] + ':' + str(iConfig['port'])
+  #iConfig[''] = iConfig['splitName'] + '.' + iConfig['dnsSuffix'] + ':' + str(iConfig['port'])
   hostSplit = iConfig['fqdn'].split('.')
   hostBase =  hostSplit[0].split('-')
+  if int(hostBase[-1]) == 0:
+    iConfig['firstPod'] = True
+  else:
+    iConfig['firstPod'] = False
   iConfig['horizon'] = iConfig['outsideName'] + ':' + str(int(iConfig['outsidePort']) + int(hostBase[-1]))
   if 'priority' in iConfig and iConfig['hostname'] in iConfig['priority']:
     iConfig['priority'] = iConfig['priority'][iConfig['hostname']]
@@ -40,9 +44,9 @@ def configChecker(iConfig):
   else:
     iConfig['monitoring'] = True
   if 'shardedClusterName' not in iConfig:
-     iConfig['shardedClusterName'] = None
+    iConfig['shardedClusterName'] = None
   if 'configServerReplicaSet' not in iConfig:
-     iConfig['configServerReplicaSet'] = None
+    iConfig['configServerReplicaSet'] = None
   if 'deploymentType' not in iConfig:
     iConfig['deploymentType'] = 'rs'
   elif iConfig['deploymentType'] not in ['rs','sh','cs', 'ms']:
@@ -67,17 +71,18 @@ def getEnvData(iConfig):
 
 def main():
     iDeployConfig = {}
-    iDeployConfig.update({'dnsSuffix': 'test.com','subDomain': 'test'})
+    iDeployConfig.update({'dnsSuffix': 'mongodb.local','subDomain': 'test'})
     # Determine logging level
     if getenv('LOGLEVEL').upper() == 'DEBUG':
       logLevel = logging.DEBUG
     else:
       logLevel = logging.INFO
     logging.basicConfig(format='{"ts": "%(asctime)s, "f": "%(funcName)s", "l": %(lineno)d, "msg": "%(message)s"}', level=logLevel)
+
   #try:
     if os.path.isfile('/init/mongod.conf') is False:
-      print("\033[91mERROR! The `mongod.conf` file must be in the same directory as `deployer.py`\033[m")
-      raise Exception("\033[91mERROR! The `mongod.conf` file must be in the same directory as `deployer.py`\033[m")
+      print("\033[91mERROR!\033[0;0m The `mongod.conf` file must be in the same directory as `deployer.py`")
+      raise Exception("\033[91mERROR!\033[0;0m The `mongod.conf` file must be in the same directory as `deployer.py`")
 
     iCfg = {}
     with open('/init/mongod.conf', 'r') as f:
@@ -85,41 +90,44 @@ def main():
       f.close()
     logging.debug(iCfg)
 
-    if os.path.isfile('/init/alerts.json') is True:
-      with open('/init/alerts.json', 'r') as f:
-        iDeployConfig.update(json.load(f))
-        f.close()
-    else:
-      iDeployConfig.update({'alerts': []})
-
     iDeployConfig.update(getEnvData(iCfg))
-    logging.debug(iDeployConfig)
 
     # check input
     iDeployConfig = configChecker(iConfig = iDeployConfig)
+    logging.debug(iDeployConfig)
+    logging.debug("\033[91m%s\033[0;0m" % iDeployConfig['horizon'])
 
-    # get current alerts
+    # get current alerts if this is the first pod (e.g. only do this once)
     # code for alerts
-    logging.debug("Getting Alerts...")
-    currentAlerts = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs',
-      publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
-    logging.debug(currentAlerts)
+    if iDeployConfig['firstPod'] is True:
 
-    replaceAlerts,newAlerts,updateAlerts = omCommon.checkAlerts(currentAlerts['results'], iDeployConfig['alerts'])
+      if os.path.isfile('/init/alerts.json') is True:
+        with open('/init/alerts.json', 'r') as f:
+          iDeployConfig.update(json.load(f))
+          f.close()
 
-    if replaceAlerts:
-      if newAlerts:
-        for alert in newAlerts:
-          result = omCommon.post(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs',
-            publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'], data = alert)
-          print(result)
-          logging.debug(result)
-      if updateAlerts:
-        for alert in updateAlerts:
-          result = omCommon.put(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs/' + alert['id'],
-            publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'], data = alert)
-          print(result)
-          logging.debug(result)
+        iDeployConfig.update({'alerts': []})
+        logging.debug("Getting Alerts...")
+        currentAlerts = omCommon.get(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs',
+          publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'])
+  
+        logging.debug(currentAlerts)
+  
+        replaceAlerts,newAlerts,updateAlerts = omCommon.checkAlerts(currentAlerts['results'], iDeployConfig['alerts'])
+  
+        if replaceAlerts:
+          if newAlerts:
+            for alert in newAlerts:
+              result = omCommon.post(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs',
+                publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'], data = alert)
+              print(result)
+              logging.debug(result)
+          if updateAlerts:
+            for alert in updateAlerts:
+              result = omCommon.put(baseurl = iDeployConfig['omBaseUrl'], endpoint = '/groups/' + iDeployConfig['projectID'] + '/alertConfigs/' + alert['id'],
+                publicKey = iDeployConfig['publicKey'], privateKey = iDeployConfig['privateKey'], ca_cert_path = iDeployConfig['ca_cert_path'], data = alert)
+              print(result)
+              logging.debug(result)
 
     # Create the process
     logging.debug("Creating Process object...")
@@ -146,7 +154,7 @@ def main():
     # remove keys that are not required
     currentConfig.pop('mongoDbVersions')
     currentConfig.pop('version')
-    #logging.debug(currentConfig)
+    logging.debug("\033[91mCurrent config:\033[0;0m %s" % currentConfig)
 
     # get the full config payload
     # determine if the member is already in the deployment
@@ -205,8 +213,8 @@ def main():
           logging.debug("CurrentVersion: %s, GoalVersion: %s" % (plan['lastGoalVersionAchieved'], planStatus['goalVersion']))
           if plan['lastGoalVersionAchieved'] != planStatus['goalVersion']:
             if plan['errorCode'] != 0:
-              logging.warn("\033[91mERROR!\033[98m %s\n%s\n%s" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
-              print("\033[91mERROR!\033[98m %s\n%s\n%s" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
+              logging.warn("\033[91mWARN!\033[0;0m %s\n%s\n%s" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
+              print("\033[91mWARN!\033[0;0m %s\n%s\n%s" % (plan['errorCodeDescription'],plan['errorCodeHumanReadable'],plan['errorString']))
             else:
               logging.debug("Applying stage: %s" % plan['plan'])
               print("Applying stage: %s" % plan['plan'])
@@ -219,8 +227,8 @@ def main():
         # sleep and wait to check again
         sleep(15)
       if achievedPlan is False:
-        logging.exception("\033[91mERROR!\033[98m, the plan has not been applied.")
-        print("\033[91mERROR!\033[98m, the plan has not been applied.")
+        logging.exception("\033[91mERROR!\033[0;0m, the plan has not been applied.")
+        print("\033[91mERROR!\033[0;0m, the plan has not been applied.")
     else:
       logging.debug("Current config is correct, not replacing")
       print("Current config is correct, not replacing")

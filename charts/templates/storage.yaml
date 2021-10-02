@@ -45,19 +45,19 @@ spec:
 {{- end }}
 
 
-{{ range $k, $index := until (.Values.replicas | int) }}
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name:  {{ $storageClass }}-mongodb-dev-{{ $index }}
-  annotations:
-    "helm.sh/resource-policy": keep
-spec:
-  storageClassName: {{ $storageClass }}
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: {{ $storageSize }}
-{{- end -}}
+#{{ range $k, $index := until (.Values.replicas | int) }}
+#---
+#apiVersion: v1
+#kind: PersistentVolumeClaim
+#metadata:
+#  name:  {{ $storageClass }}-mongodb-dev-{{ $index }}
+#  annotations:
+#    "helm.sh/resource-policy": keep
+#spec:
+#  storageClassName: {{ $storageClass }}
+#  accessModes:
+#    - ReadWriteOnce
+#  resources:
+#    requests:
+#      storage: {{ $storageSize }}
+#{{- end -}}
