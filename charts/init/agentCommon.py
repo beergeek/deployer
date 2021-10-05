@@ -32,6 +32,9 @@ def downloadAA(iCfg):
     else:
       data = requests.get(url, allow_redirects=True)
 
+    if data.status_code == 404:
+      raise Exception("Tarball not found")
+
     open(TMPPATH + MMSAANAME + iCfg['os'] + "_" + iCfg['arch'] + AAEXT, 'wb').write(data.content)
   except Exception as e:
     logging.error("Failed to download automation agent: %s" % str(e))
